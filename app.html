@@ -5666,30 +5666,31 @@ document.getElementById("joinFamilyBtn").addEventListener("click", async () => {
     return;
   }
 
-  // Step 2: Look up the family by code
-  const { data: familyData, error: familyError } = await supabaseClient
-    .from("families")
-    .select("id")
-    .eq("family_code", code.trim())
-    .single();
-
-  if (familyError || !familyData) {
-    setSetupStatus("❌ Family code not found. Please check and try again.");
+  // Step 1b: Wait for session to be fully ready
+  let session = null;
+  for (let i = 0; i < 10; i++) {
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    if (sessionData?.session?.access_token) {
+      session = sessionData.session;
+      break;
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  if (!session) {
+    setSetupStatus("Could not establish a session. Please try again.");
     return;
   }
 
-  // Step 3: Create the child's profile row
-  const { error: profileError } = await supabaseClient
-    .from("profiles")
-    .insert({
-      user_id: authData.user.id,
-      family_id: familyData.id,
-      role: "child",
-      display_name: "Child"
+  // Step 2: Join the family via RPC function
+  const { data: rpcData, error: rpcError } = await supabaseClient
+    .rpc("join_family_for_current_user", {
+      p_family_code: code.trim(),
+      p_display_name: "Child"
     });
 
-  if (profileError) {
-    setSetupStatus("Error creating profile: " + profileError.message);
+  console.log("Join family result:", { rpcData, rpcError });
+  if (rpcError) {
+    setSetupStatus("❌ " + rpcError.message);
     return;
   }
 
