@@ -5591,6 +5591,51 @@ init();
 
   // Quick test: confirm the connection loads without errors
   console.log("Puzzle Pig Supabase client ready:", supabaseClient);
+  // ===== Puzzle Pig: Check Existing User =====
+
+// Global state so other parts of the app can know who's signed in
+window.currentUserProfile = null;
+
+async function checkExistingUser() {
+  // Step 1: Is there a current session?
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) {
+    console.log("No existing session — showing setup screen.");
+    return;
+  }
+
+  // Step 2: Does this user have a profile?
+  const userId = session.user.id;
+  const { data: profile, error } = await supabaseClient
+    .from("profiles")
+    .select("*")
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !profile) {
+    console.log("Signed in but no profile yet — showing setup screen.");
+    return;
+  }
+
+  // Step 3: User has a profile — hide the setup screen
+  console.log("Existing user found:", profile);
+  window.currentUserProfile = profile;
+
+  const setupScreen = document.getElementById("familySetupScreen");
+  if (setupScreen) {
+    setupScreen.style.display = "none";
+  }
+
+  // Friendly note in the console — dashboards come next
+  if (profile.role === "parent") {
+    console.log("👨‍👩‍👧 Welcome back, Parent! (Parent dashboard coming in next baby step.)");
+  } else if (profile.role === "child") {
+    console.log("🧒 Welcome back, Kid! (Child dashboard coming in next baby step.)");
+  }
+}
+
+// Run the check as soon as the page loads
+checkExistingUser();
    // ===== Puzzle Pig: Family Setup Logic =====
 
 // Helper: show a status message on the setup screen
