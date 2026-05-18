@@ -5610,14 +5610,31 @@ document.getElementById("startFamilyBtn").addEventListener("click", async () => 
 
   // Step 1: Sign in anonymously
   const { data: authData, error: authError } = await supabaseClient.auth.signInAnonymously();
+  console.log("Anon sign-in result:", { authData, authError });
   if (authError) {
     setSetupStatus("Error signing in: " + authError.message);
     return;
   }
 
+  // Step 1b: Verify the session is fully attached before continuing
+  let session = null;
+  for (let i = 0; i < 10; i++) {
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    if (sessionData && sessionData.session && sessionData.session.access_token) {
+      session = sessionData.session;
+      break;
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  console.log("Session ready:", session);
+  if (!session) {
+    setSetupStatus("Could not establish a session. Please try again.");
+    return;
+  }
+
   // Step 2: Create a new family row
   const familyCode = generateFamilyCode();
-  const familyName = "My Family"; // we'll let parent edit this later
+  const familyName = "My Family";
   const { data: familyData, error: familyError } = await supabaseClient
     .from("families")
     .insert({ family_name: familyName, family_code: familyCode })
@@ -5625,6 +5642,7 @@ document.getElementById("startFamilyBtn").addEventListener("click", async () => 
     .single();
 
   if (familyError) {
+    console.log("Family insert error:", familyError);
     setSetupStatus("Error creating family: " + familyError.message);
     return;
   }
@@ -5640,11 +5658,11 @@ document.getElementById("startFamilyBtn").addEventListener("click", async () => 
     });
 
   if (profileError) {
+    console.log("Profile insert error:", profileError);
     setSetupStatus("Error creating profile: " + profileError.message);
     return;
   }
 
-  // Success!
   setSetupStatus("✅ Family created! Your family code is: " + familyCode);
   alert("Your family code is:\n\n" + familyCode + "\n\nShare this with your child so they can join.");
 });
