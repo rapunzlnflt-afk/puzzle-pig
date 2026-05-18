@@ -1478,7 +1478,41 @@ a { color: inherit; text-decoration: none; }
   <p id="familySetupStatus" style="margin-top: 30px; color: #888; font-size: 14px; min-height: 20px;"></p>
 </div>
 
-<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#6E6E7E,#D8D8DE,#F4F4F8,#D8D8DE,#6E6E7E);padding:6px 16px;text-align:center;font:600 13px/1.4 'Pally',sans-serif;color:#52525E;letter-spacing:.5px;">DEMO — Data resets on refresh &nbsp;|&nbsp; <a href="https://www.etsy.com/listing/4490566794/puzzle-piggy-kids-savings-tracker-chore" style="color:#7C5AC7;text-decoration:underline;font-weight:700;">Get the Full Version</a></div>
+<!-- ===== Puzzle Pig: Parent Dashboard ===== -->
+<div id="parentDashboard" style="
+  display: none;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background: linear-gradient(135deg, #fff5f8 0%, #fdeef3 100%);
+  font-family: sans-serif;
+  padding: 20px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  z-index: 9998;
+">
+  <h1 style="color: #c2185b; font-size: 28px; margin-bottom: 4px;">👨‍👩‍👧 Parent Dashboard</h1>
+  <p style="color: #888; font-size: 14px; margin-top: 0;">Add chores and review your child's progress.</p>
+
+  <!-- Add Chore Form -->
+  <div style="margin-top: 20px; background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
+    <h2 style="font-size: 18px; color: #c2185b; margin-top: 0;">Add a new chore</h2>
+    <input id="newChoreTitle" type="text" placeholder="e.g. Brush teeth"
+      style="width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box;">
+    <button id="addChoreBtn"
+      style="margin-top: 10px; background: #ec407a; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%;">
+      ➕ Add Chore
+    </button>
+    <p id="addChoreStatus" style="color: #888; font-size: 13px; min-height: 18px; margin-top: 8px;"></p>
+  </div>
+
+  <!-- Chore List -->
+  <div style="margin-top: 20px;">
+    <h2 style="font-size: 18px; color: #c2185b;">Family Chores</h2>
+    <div id="parentChoreList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+  </div>
+</div>
+   <div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#6E6E7E,#D8D8DE,#F4F4F8,#D8D8DE,#6E6E7E);padding:6px 16px;text-align:center;font:600 13px/1.4 'Pally',sans-serif;color:#52525E;letter-spacing:.5px;">DEMO — Data resets on refresh &nbsp;|&nbsp; <a href="https://www.etsy.com/listing/4490566794/puzzle-piggy-kids-savings-tracker-chore" style="color:#7C5AC7;text-decoration:underline;font-weight:700;">Get the Full Version</a></div>
 <div style="height:32px;"></div>
 <!-- ===== USER SELECT SCREEN ===== -->
 <div id="userSelectScreen">
@@ -5629,6 +5663,7 @@ async function checkExistingUser() {
   // Friendly note in the console — dashboards come next
   if (profile.role === "parent") {
     console.log("👨‍👩‍👧 Welcome back, Parent! (Parent dashboard coming in next baby step.)");
+     showParentDashboard();
   } else if (profile.role === "child") {
     console.log("🧒 Welcome back, Kid! (Child dashboard coming in next baby step.)");
   }
@@ -5742,6 +5777,80 @@ document.getElementById("joinFamilyBtn").addEventListener("click", async () => {
   setSetupStatus("✅ Joined family successfully!");
   alert("You've joined the family! 🎉");
 });
+   // ===== Puzzle Pig: Parent Dashboard Logic =====
+
+async function showParentDashboard() {
+  const dashboard = document.getElementById("parentDashboard");
+  if (!dashboard) return;
+  dashboard.style.display = "block";
+
+  // Load existing chores
+  await loadParentChores();
+
+  // Wire up the Add Chore button
+  const addBtn = document.getElementById("addChoreBtn");
+  addBtn.addEventListener("click", async () => {
+    const titleInput = document.getElementById("newChoreTitle");
+    const status = document.getElementById("addChoreStatus");
+    const title = titleInput.value.trim();
+
+    if (!title) {
+      status.textContent = "Please type a chore name first.";
+      return;
+    }
+    status.textContent = "Adding...";
+
+    const profile = window.currentUserProfile;
+    const { error } = await supabaseClient
+      .from("chores")
+      .insert({
+        family_id: profile.family_id,
+        title: title,
+        status: "pending"
+      });
+
+    if (error) {
+      console.log("Add chore error:", error);
+      status.textContent = "❌ " + error.message;
+      return;
+    }
+
+    status.textContent = "✅ Chore added!";
+    titleInput.value = "";
+    await loadParentChores();
+  });
+}
+
+async function loadParentChores() {
+  const list = document.getElementById("parentChoreList");
+  const profile = window.currentUserProfile;
+  if (!list || !profile) return;
+
+  const { data: chores, error } = await supabaseClient
+    .from("chores")
+    .select("*")
+    .eq("family_id", profile.family_id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    list.innerHTML = `<p style="color:#c2185b;">Error loading chores: ${error.message}</p>`;
+    return;
+  }
+
+  if (!chores || chores.length === 0) {
+    list.innerHTML = `<p style="color:#888;">No chores yet. Add your first one above!</p>`;
+    return;
+  }
+
+  list.innerHTML = chores.map(c => `
+    <div style="background: white; padding: 14px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <div style="font-weight: bold; color: #333;">${c.title}</div>
+        <div style="font-size: 12px; color: #888;">Status: ${c.status}</div>
+      </div>
+    </div>
+  `).join("");
+}
 </script>
 </body>
 </html>
