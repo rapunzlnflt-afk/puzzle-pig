@@ -5530,5 +5530,15 @@ function daysUntil(dateStr) {
 // ---- Boot ----
 init();
 </script>
+<script>
+  // ===== Puzzle Pig: Supabase Connection =====
+  const SUPABASE_URL = "https://qwnbycvkrxikgxsrncen.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_KEKSIwChDxC0pvL8WoWQhQ_Otvl7NL_";
+
+  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // Quick test: confirm the connection loads without errors
+  console.log("Puzzle Pig Supabase client ready:", supabaseClient);
+</script>
 </body>
 </html>
