@@ -5591,6 +5591,108 @@ init();
 
   // Quick test: confirm the connection loads without errors
   console.log("Puzzle Pig Supabase client ready:", supabaseClient);
+   // ===== Puzzle Pig: Family Setup Logic =====
+
+// Helper: show a status message on the setup screen
+function setSetupStatus(message) {
+  const el = document.getElementById("familySetupStatus");
+  if (el) el.textContent = message;
+}
+
+// Helper: generate a 6-digit family code
+function generateFamilyCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// Parent: Start a Family
+document.getElementById("startFamilyBtn").addEventListener("click", async () => {
+  setSetupStatus("Setting up your family...");
+
+  // Step 1: Sign in anonymously
+  const { data: authData, error: authError } = await supabaseClient.auth.signInAnonymously();
+  if (authError) {
+    setSetupStatus("Error signing in: " + authError.message);
+    return;
+  }
+
+  // Step 2: Create a new family row
+  const familyCode = generateFamilyCode();
+  const familyName = "My Family"; // we'll let parent edit this later
+  const { data: familyData, error: familyError } = await supabaseClient
+    .from("families")
+    .insert({ family_name: familyName, family_code: familyCode })
+    .select()
+    .single();
+
+  if (familyError) {
+    setSetupStatus("Error creating family: " + familyError.message);
+    return;
+  }
+
+  // Step 3: Create the parent's profile row
+  const { error: profileError } = await supabaseClient
+    .from("profiles")
+    .insert({
+      user_id: authData.user.id,
+      family_id: familyData.id,
+      role: "parent",
+      display_name: "Parent"
+    });
+
+  if (profileError) {
+    setSetupStatus("Error creating profile: " + profileError.message);
+    return;
+  }
+
+  // Success!
+  setSetupStatus("✅ Family created! Your family code is: " + familyCode);
+  alert("Your family code is:\n\n" + familyCode + "\n\nShare this with your child so they can join.");
+});
+
+// Child: Join a Family
+document.getElementById("joinFamilyBtn").addEventListener("click", async () => {
+  const code = prompt("Enter your family code:");
+  if (!code) return;
+
+  setSetupStatus("Joining family...");
+
+  // Step 1: Sign in anonymously
+  const { data: authData, error: authError } = await supabaseClient.auth.signInAnonymously();
+  if (authError) {
+    setSetupStatus("Error signing in: " + authError.message);
+    return;
+  }
+
+  // Step 2: Look up the family by code
+  const { data: familyData, error: familyError } = await supabaseClient
+    .from("families")
+    .select("id")
+    .eq("family_code", code.trim())
+    .single();
+
+  if (familyError || !familyData) {
+    setSetupStatus("❌ Family code not found. Please check and try again.");
+    return;
+  }
+
+  // Step 3: Create the child's profile row
+  const { error: profileError } = await supabaseClient
+    .from("profiles")
+    .insert({
+      user_id: authData.user.id,
+      family_id: familyData.id,
+      role: "child",
+      display_name: "Child"
+    });
+
+  if (profileError) {
+    setSetupStatus("Error creating profile: " + profileError.message);
+    return;
+  }
+
+  setSetupStatus("✅ Joined family successfully!");
+  alert("You've joined the family! 🎉");
+});
 </script>
 </body>
 </html>
