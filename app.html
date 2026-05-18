@@ -5632,36 +5632,21 @@ document.getElementById("startFamilyBtn").addEventListener("click", async () => 
     return;
   }
 
-  // Step 2: Create a new family row
-  const familyCode = generateFamilyCode();
-  const familyName = "My Family";
-  const { data: familyData, error: familyError } = await supabaseClient
-    .from("families")
-    .insert({ family_name: familyName, family_code: familyCode })
-    .select()
-    .single();
+ // Step 2: Create family + parent profile in one safe function call
+const familyCode = generateFamilyCode();
+const familyName = "My Family";
+const { data: rpcData, error: rpcError } = await supabaseClient
+  .rpc("create_family_for_current_user", {
+    p_family_name: familyName,
+    p_family_code: familyCode,
+    p_display_name: "Parent"
+  });
 
-  if (familyError) {
-    console.log("Family insert error:", familyError);
-    setSetupStatus("Error creating family: " + familyError.message);
-    return;
-  }
-
-  // Step 3: Create the parent's profile row
-  const { error: profileError } = await supabaseClient
-    .from("profiles")
-    .insert({
-      user_id: authData.user.id,
-      family_id: familyData.id,
-      role: "parent",
-      display_name: "Parent"
-    });
-
-  if (profileError) {
-    console.log("Profile insert error:", profileError);
-    setSetupStatus("Error creating profile: " + profileError.message);
-    return;
-  }
+console.log("Create family result:", { rpcData, rpcError });
+if (rpcError) {
+  setSetupStatus("Error creating family: " + rpcError.message);
+  return;
+}
 
   setSetupStatus("✅ Family created! Your family code is: " + familyCode);
   alert("Your family code is:\n\n" + familyCode + "\n\nShare this with your child so they can join.");
