@@ -1528,8 +1528,7 @@ a { color: inherit; text-decoration: none; }
   padding:6px 10px; border-radius:999px; font-family:'DM Sans',system-ui,sans-serif;
   box-shadow:0 4px 12px rgba(0,0,0,0.15); pointer-events:none;
 ">Syncing…</div>
-   <div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#6E6E7E,#D8D8DE,#F4F4F8,#D8D8DE,#6E6E7E);padding:6px 16px;text-align:center;font:600 13px/1.4 'Pally',sans-serif;color:#52525E;letter-spacing:.5px;">DEMO — Data resets on refresh &nbsp;|&nbsp; <a href="https://www.etsy.com/listing/4490566794/puzzle-piggy-kids-savings-tracker-chore" style="color:#7C5AC7;text-decoration:underline;font-weight:700;">Get the Full Version</a></div>
-<div style="height:32px;"></div>
+<!-- Demo banner removed for real two-device version -->
 <!-- ===== USER SELECT SCREEN ===== -->
 <div id="userSelectScreen">
   <div class="app-logo">
@@ -2585,20 +2584,9 @@ async function doRemoveUser(id) {
 
 // ---- Init ----
 async function init() {
-  // Demo mode: always start fresh
-  try {
-    const delReq = indexedDB.deleteDatabase('PuzzlePigDB');
-    await new Promise((resolve, reject) => {
-      delReq.onsuccess = resolve;
-      delReq.onerror = resolve; // continue even if delete fails
-      delReq.onblocked = resolve;
-    });
-  } catch(e) {}
-
+  // ===== REAL MODE: persistent data, no demo wipe, no demo seed =====
   await openDB();
-
-  // Demo: auto-seed test data
-  await preloadTestData();
+  // (preloadTestData() intentionally NOT called — kid avatars are created by the parent.)
 
   // Migrate: if goals exist but no users, create a default user
   const allGoals = await dbGetAll();
@@ -5744,6 +5732,24 @@ init();
       createdAt: r.created_at || new Date().toISOString()
     };
   }
+  function userToRow(u){
+    return {
+      local_id: u.id,
+      family_id: familyId,
+      name: u.name || '',
+      avatar: u.avatar || '',
+      pin: u.pin || ''
+    };
+  }
+  function rowToUser(r){
+    return {
+      id: r.local_id,
+      name: r.name || '',
+      avatar: r.avatar || '',
+      pin: r.pin || ''
+    };
+  }
+
   function logToRow(cl){
     return {
       local_id: cl.id,
@@ -5781,6 +5787,23 @@ init();
       if (error) console.warn('[PuzzlePig sync] push chore error', error);
     } catch(e){ console.warn('[PuzzlePig sync] push chore exception', e); }
   }
+  async function pushUser(u){
+    if (!familyId || !u || !u.id) return;
+    markPushed(u.id);
+    try {
+      showSyncChip('Syncing…');
+      const { error } = await sb.from('family_users').upsert(userToRow(u), { onConflict: 'local_id' });
+      if (error) console.warn('[PuzzlePig sync] push user error', error);
+    } catch(e){ console.warn('[PuzzlePig sync] push user exception', e); }
+  }
+  async function deleteUserRemote(localId){
+    if (!familyId || !localId) return;
+    try {
+      const { error } = await sb.from('family_users').delete().eq('family_id', familyId).eq('local_id', localId);
+      if (error) console.warn('[PuzzlePig sync] delete user error', error);
+    } catch(e){ console.warn('[PuzzlePig sync] delete user exception', e); }
+  }
+
   async function pushChoreLog(cl){
     if (!familyId || !cl || !cl.id) return;
     markPushed(cl.id);
@@ -5827,23 +5850,56 @@ init();
       };
       window.dbDeleteChore.__ppWrapped = true;
     }
+    if (typeof dbPutUser === 'function' && !dbPutUser.__ppWrapped){
+      const orig = dbPutUser;
+      window.dbPutUser = async function(u){
+        const r = await orig(u);
+        pushUser(u);
+        return r;
+      };
+      window.dbPutUser.__ppWrapped = true;
+    }
+    if (typeof dbDeleteUser === 'function' && !dbDeleteUser.__ppWrapped){
+      const orig = dbDeleteUser;
+      window.dbDeleteUser = async function(id){
+        const r = await orig(id);
+        deleteUserRemote(id);
+        return r;
+      };
+      window.dbDeleteUser.__ppWrapped = true;
+    }
   }
 
   // ---------- initial pull + merge ----------
   async function pullAndMerge(){
     if (!familyId) return;
     try {
-      const [choresRes, logsRes] = await Promise.all([
+      const [choresRes, logsRes, usersRes] = await Promise.all([
         sb.from('chores').select('*').eq('family_id', familyId),
-        sb.from('chore_logs').select('*').eq('family_id', familyId)
+        sb.from('chore_logs').select('*').eq('family_id', familyId),
+        sb.from('family_users').select('*').eq('family_id', familyId)
       ]);
       if (choresRes.error) console.warn('[PuzzlePig sync] pull chores error', choresRes.error);
       if (logsRes.error)   console.warn('[PuzzlePig sync] pull logs error', logsRes.error);
+      if (usersRes.error)  console.warn('[PuzzlePig sync] pull users error', usersRes.error);
 
       const remoteChores = (choresRes.data || []).map(rowToChore);
       const remoteLogs   = (logsRes.data   || []).map(rowToLog);
+      const remoteUsers  = (usersRes.data  || []).map(rowToUser);
 
       if (typeof _memChores === 'undefined' || typeof _memChoreLogs === 'undefined') return;
+
+      // Merge users first — chores reference them
+      if (typeof _memUsers !== 'undefined'){
+        for (const ru of remoteUsers){
+          const i = _memUsers.findIndex(x => x.id === ru.id);
+          if (i >= 0) _memUsers[i] = Object.assign({}, _memUsers[i], ru);
+          else _memUsers.push(ru);
+        }
+        if (typeof users !== 'undefined' && Array.isArray(users)){
+          window.users = _memUsers.map(u => ({...u}));
+        }
+      }
 
       // Merge chores
       for (const rc of remoteChores){
@@ -5891,6 +5947,9 @@ init();
       .on('postgres_changes',
           { event: '*', schema: 'public', table: 'chore_logs', filter: 'family_id=eq.' + familyId },
           (payload) => handleChoreLogChange(payload))
+      .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'family_users', filter: 'family_id=eq.' + familyId },
+          (payload) => handleUserChange(payload))
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') console.log('[PuzzlePig sync] realtime subscribed');
       });
@@ -5916,6 +5975,31 @@ init();
         else if (j >= 0) chores.splice(j,1);
       }
     }
+    safeRerender();
+  }
+
+  function handleUserChange(payload){
+    if (typeof _memUsers === 'undefined') return;
+    if (payload.eventType === 'DELETE'){
+      const old = payload.old || {};
+      if (!old.local_id) return;
+      _memUsers = _memUsers.filter(u => u.id !== old.local_id);
+      if (typeof users !== 'undefined') window.users = users.filter(u => u.id !== old.local_id);
+      // If the currently-active user was deleted on the other device, clear it
+      if (typeof currentUserId !== 'undefined' && currentUserId === old.local_id){
+        try { window.currentUserId = (users && users[0] && users[0].id) || null; } catch(_){}
+      }
+    } else {
+      const r = payload.new; if (!r || !r.local_id) return;
+      const u = rowToUser(r);
+      const i = _memUsers.findIndex(x => x.id === u.id);
+      if (i >= 0) _memUsers[i] = u; else _memUsers.push(u);
+      if (typeof users !== 'undefined' && Array.isArray(users)){
+        const j = users.findIndex(x => x.id === u.id);
+        if (j >= 0) users[j] = {...u}; else users.push({...u});
+      }
+    }
+    try { if (typeof renderUserSelect === 'function') renderUserSelect(); } catch(_){}
     safeRerender();
   }
 
