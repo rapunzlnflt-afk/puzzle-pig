@@ -7001,6 +7001,13 @@ init();
           }
           // Ensure body class is set so CSS rule kicks in too
           try { document.body.classList.add('pp-parent-mode'); } catch(_){}
+          // Hide the main header (Puzzle Pig logo + tagline) and bottom nav on parent device
+          const mh = document.getElementById('mainHeader');
+          if (mh) mh.style.cssText = 'display:none !important;';
+          const bn = document.getElementById('bottomNav');
+          if (bn) bn.style.cssText = 'display:none !important;';
+          const cb = document.getElementById('currentUserBar');
+          if (cb) cb.style.cssText = 'display:none !important;';
           const appEl = document.getElementById('app');
           if (appEl) appEl.style.display = '';
           // Make sure visible users array has data from sync
