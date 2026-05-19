@@ -2233,10 +2233,14 @@ let selectedCategory = null;
 let uploadedImageData = null;
 
 // ---- Jars + Chores State ----
+// NOTE: `chores` and `choreLogs` are `var` (not `let`) so they become
+// properties of `window`. The Supabase sync layer lives in another <script>
+// and writes window.chores / window.choreLogs from realtime events; with
+// `let` those writes wouldn't be visible to the renderers in this script.
 let jars = [];
 let jarTxs = [];
-let chores = [];
-let choreLogs = [];
+var chores = [];
+var choreLogs = [];
 let currentJarId = null;  // jar being viewed for detail
 let jarSetupMode = false;
 let selectedAllocJarId = null;
