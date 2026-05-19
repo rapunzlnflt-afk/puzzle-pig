@@ -6573,11 +6573,21 @@ init();
     input.onkeydown = (e) => { if (e.key === 'Enter') tryUnlock(); };
   }
 
-  function finishKidUnlock(kidId){
+  async function finishKidUnlock(kidId){
     hideKidScreens();
+    // Ensure this kid has jars locally on this device. Parent-side users
+    // only synced through Supabase, so the kid phone has no jars/chores
+    // in IndexedDB yet. Without this, selectUser() routes to jarsView
+    // (a parent-only setup screen), leaving the kid stranded.
+    try {
+      if (typeof autoCreateJarsForUser === 'function'){
+        await autoCreateJarsForUser(kidId);
+      }
+    } catch(e){ console.warn('[PuzzlePig kid] autoCreateJarsForUser failed', e); }
     // Use the existing selectUser() to actually enter the app as that kid
     if (typeof selectUser === 'function'){
-      try { selectUser(kidId); } catch(e){ console.warn('[PuzzlePig kid] selectUser failed', e); }
+      try { await selectUser(kidId); }
+      catch(e){ console.warn('[PuzzlePig kid] selectUser failed', e); }
     }
   }
 
