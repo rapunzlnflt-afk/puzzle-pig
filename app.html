@@ -2836,6 +2836,7 @@ async function init() {
   // Skip the parent-oriented welcome guide on kid devices entirely.
   const ppRole = (typeof localStorage !== 'undefined') ? localStorage.getItem('pp_role') : null;
   const isKidDevice = (ppRole === 'child');
+  const isParentDevice = (ppRole === 'parent');
   if (isKidDevice){
     // Mark guide as seen so it never opens on kid devices
     try { await dbPutSetting('hasSeenGuide', true); } catch(_){}
@@ -2845,6 +2846,16 @@ async function init() {
     // will hide #app and show the parent picker, which on kid devices is
     // CSS-hidden — producing a blank screen.
     console.log('[PuzzlePig] init(): kid device detected, skipping parent setup flow');
+    return;
+  }
+  if (isParentDevice){
+    // Parent device: skip the avatar picker. Sync layer's onFamilyReady will
+    // route to parentSettingsView. Just make sure #app is visible.
+    try { await dbPutSetting('hasSeenGuide', true); } catch(_){}
+    document.getElementById('app').style.display = '';
+    document.getElementById('userSelectScreen').style.display = 'none';
+    if (typeof showView === 'function') showView('parentSettingsView');
+    console.log('[PuzzlePig] init(): parent device detected, routed to parentSettingsView');
     return;
   }
   {
