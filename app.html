@@ -2848,16 +2848,7 @@ async function init() {
     console.log('[PuzzlePig] init(): kid device detected, skipping parent setup flow');
     return;
   }
-  if (isParentDevice){
-    // Parent device: skip the avatar picker. Sync layer's onFamilyReady will
-    // route to parentSettingsView. Just make sure #app is visible.
-    try { await dbPutSetting('hasSeenGuide', true); } catch(_){}
-    document.getElementById('app').style.display = '';
-    document.getElementById('userSelectScreen').style.display = 'none';
-    if (typeof showView === 'function') showView('parentSettingsView');
-    console.log('[PuzzlePig] init(): parent device detected, routed to parentSettingsView');
-    return;
-  }
+
   {
     const hasSeenGuide = await dbGetSetting('hasSeenGuide');
     if (!hasSeenGuide) {
@@ -6962,14 +6953,6 @@ init();
     if (role === 'child') enterKidMode();
     if (role === 'parent') {
       try { document.body.classList.add('pp-parent-mode'); } catch(_){}
-      // Parent: skip the user-select screen entirely, go straight to parent settings
-      try {
-        const sel = document.getElementById('userSelectScreen');
-        if (sel) sel.style.display = 'none';
-        const appEl = document.getElementById('app');
-        if (appEl) appEl.style.display = '';
-        if (typeof showView === 'function') showView('parentSettingsView');
-      } catch(_){}
     }
     wrapLocalWriters();
     // Wait until the local _mem arrays exist (init() finished basic setup)
@@ -6980,6 +6963,22 @@ init();
     subscribeRealtime();
     if (role === 'child'){
       await initKidMode();
+    } else if (role === 'parent'){
+      // Parent: now that sync has hydrated users, hide the avatar picker and
+      // route straight to parent settings. CSS already hides userSelectScreen,
+      // but init() left #app hidden — show it and render.
+      try {
+        const sel = document.getElementById('userSelectScreen');
+        if (sel) sel.style.display = 'none';
+        const appEl = document.getElementById('app');
+        if (appEl) appEl.style.display = '';
+        // Make sure visible users array has data from sync
+        if (typeof _memUsers !== 'undefined' && _memUsers.length > 0){
+          window.users = _memUsers.map(u => JSON.parse(JSON.stringify(u)));
+        }
+        if (typeof showView === 'function') showView('parentSettingsView');
+        console.log('[PuzzlePig parent] routed to parentSettingsView, users=', (window.users && window.users.length));
+      } catch(e){ console.warn('[PuzzlePig parent] route failed', e); }
     }
   }
 
