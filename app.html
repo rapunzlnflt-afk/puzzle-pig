@@ -6942,7 +6942,17 @@ init();
     // If this is a kid device, lock the UI down immediately so the parent
     // user-select screen never flashes.
     if (role === 'child') enterKidMode();
-    if (role === 'parent') { try { document.body.classList.add('pp-parent-mode'); } catch(_){} }
+    if (role === 'parent') {
+      try { document.body.classList.add('pp-parent-mode'); } catch(_){}
+      // Parent: skip the user-select screen entirely, go straight to parent settings
+      try {
+        const sel = document.getElementById('userSelectScreen');
+        if (sel) sel.style.display = 'none';
+        const appEl = document.getElementById('app');
+        if (appEl) appEl.style.display = '';
+        if (typeof showView === 'function') showView('parentSettingsView');
+      } catch(_){}
+    }
     wrapLocalWriters();
     // Wait until the local _mem arrays exist (init() finished basic setup)
     for (let i=0; i<40 && (typeof _memChores === 'undefined'); i++){
