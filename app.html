@@ -6973,6 +6973,24 @@ init();
       // Parent: now that sync has hydrated users, hide the avatar picker and
       // route straight to parent settings. CSS already hides userSelectScreen,
       // but init() left #app hidden — show it and render.
+      // ===== DIAGNOSTIC: watch which views get .active and who's stealing it =====
+      try {
+        if (!window.__ppViewObserver){
+          window.__ppViewObserver = true;
+          document.querySelectorAll('.view').forEach(v => {
+            const mo = new MutationObserver((muts) => {
+              muts.forEach(m => {
+                if (m.attributeName === 'class'){
+                  const has = v.classList.contains('active');
+                  console.log('[PuzzlePig view]', v.id, has ? 'GAINED active' : 'LOST active', 'stack:', new Error().stack.split('\n').slice(2,5).join(' <- '));
+                }
+              });
+            });
+            mo.observe(v, { attributes: true, attributeFilter: ['class'] });
+          });
+          console.log('[PuzzlePig] view observer installed for', document.querySelectorAll('.view').length, 'views');
+        }
+      } catch(_){ }
       const routeParent = () => {
         try {
           const sel = document.getElementById('userSelectScreen');
