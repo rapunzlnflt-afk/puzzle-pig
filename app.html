@@ -6993,8 +6993,14 @@ init();
       } catch(_){ }
       const routeParent = () => {
         try {
+          // Aggressively hide userSelectScreen: inline style, attribute, AND remove from layout
           const sel = document.getElementById('userSelectScreen');
-          if (sel) sel.style.display = 'none';
+          if (sel) {
+            sel.style.cssText = 'display:none !important; visibility:hidden !important; height:0 !important; overflow:hidden !important;';
+            sel.setAttribute('hidden', 'hidden');
+          }
+          // Ensure body class is set so CSS rule kicks in too
+          try { document.body.classList.add('pp-parent-mode'); } catch(_){}
           const appEl = document.getElementById('app');
           if (appEl) appEl.style.display = '';
           // Make sure visible users array has data from sync
