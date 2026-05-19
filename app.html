@@ -6471,6 +6471,17 @@ init();
     } catch(_){}
     _markLogCredited(cl.id);
     console.log('[creditKidJar] credited $' + amount.toFixed(2) + ' to jar ' + jar.id + ' for log ' + cl.id);
+    // Refresh visible jars + home view so kid sees new balance immediately
+    try {
+      if (typeof currentUserId !== 'undefined' && typeof dbGetAllJars === 'function'){
+        const allJ2 = await dbGetAllJars();
+        if (typeof jars !== 'undefined') {
+          window.jars = allJ2.filter(j => j.userId === currentUserId);
+        }
+      }
+      if (typeof renderJarsView === 'function') renderJarsView();
+      if (typeof renderHome === 'function') renderHome();
+    } catch(_){}
   }
   try { window.creditKidJarFromApprovedLog = creditKidJarFromApprovedLog; } catch(_){}
 
