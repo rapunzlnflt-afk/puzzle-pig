@@ -2255,28 +2255,154 @@ const DEFAULT_JARS = [
   { name: 'Give', type: 'give', color: '#E74C3C' },
 ];
 
-// ---- IndexedDB (Demo: in-memory) ----
-let _memGoals = []; let _memUsers = []; let _memSettings = {};
-let _memJars = []; let _memJarTxs = []; let _memChores = []; let _memChoreLogs = [];
-function openDB(){ return Promise.resolve(); }
-function dbGetAll(){ return Promise.resolve([..._memGoals.map(g=>JSON.parse(JSON.stringify(g)))]); }
-function dbPut(g){ const i = _memGoals.findIndex(x=>x.id===g.id); if(i>=0) _memGoals[i]=JSON.parse(JSON.stringify(g)); else _memGoals.push(JSON.parse(JSON.stringify(g))); return Promise.resolve(); }
-function dbDelete(id){ _memGoals = _memGoals.filter(g=>g.id!==id); return Promise.resolve(); }
-function dbGetAllUsers(){ return Promise.resolve([..._memUsers.map(u=>({...u}))]); }
-function dbPutUser(u){ const i = _memUsers.findIndex(x=>x.id===u.id); if(i>=0) _memUsers[i]={...u}; else _memUsers.push({...u}); return Promise.resolve(); }
-function dbDeleteUser(id){ _memUsers = _memUsers.filter(u=>u.id!==id); return Promise.resolve(); }
-function dbGetSetting(k){ return Promise.resolve(_memSettings[k] !== undefined ? _memSettings[k] : null); }
-function dbPutSetting(key, value){ _memSettings[key] = value; return Promise.resolve(); }
-function dbPutJar(j){ const i = _memJars.findIndex(x=>x.id===j.id); if(i>=0) _memJars[i]=JSON.parse(JSON.stringify(j)); else _memJars.push(JSON.parse(JSON.stringify(j))); return Promise.resolve(); }
-function dbDeleteJar(id){ _memJars = _memJars.filter(j=>j.id!==id); return Promise.resolve(); }
-function dbGetAllJars(){ return Promise.resolve([..._memJars.map(j=>JSON.parse(JSON.stringify(j)))]); }
-function dbPutJarTx(t){ const i = _memJarTxs.findIndex(x=>x.id===t.id); if(i>=0) _memJarTxs[i]=JSON.parse(JSON.stringify(t)); else _memJarTxs.push(JSON.parse(JSON.stringify(t))); return Promise.resolve(); }
-function dbGetAllJarTxs(){ return Promise.resolve([..._memJarTxs.map(t=>JSON.parse(JSON.stringify(t)))]); }
-function dbPutChore(c){ const i = _memChores.findIndex(x=>x.id===c.id); if(i>=0) _memChores[i]=JSON.parse(JSON.stringify(c)); else _memChores.push(JSON.parse(JSON.stringify(c))); return Promise.resolve(); }
-function dbDeleteChore(id){ _memChores = _memChores.filter(c=>c.id!==id); return Promise.resolve(); }
-function dbGetAllChores(){ return Promise.resolve([..._memChores.map(c=>JSON.parse(JSON.stringify(c)))]); }
-function dbPutChoreLog(e){ const i = _memChoreLogs.findIndex(x=>x.id===e.id); if(i>=0) _memChoreLogs[i]=JSON.parse(JSON.stringify(e)); else _memChoreLogs.push(JSON.parse(JSON.stringify(e))); return Promise.resolve(); }
-function dbGetAllChoreLogs(){ return Promise.resolve([..._memChoreLogs.map(e=>JSON.parse(JSON.stringify(e)))]); }
+// ---- IndexedDB (real persistence) ----
+// Goals, jars, jar transactions, settings: persisted directly to IndexedDB.
+// Users, chores, chore logs: ALSO kept in _mem* arrays as a working set for
+// the Supabase sync layer (which reads/writes _memUsers / _memChores /
+// _memChoreLogs synchronously). The `dbPut*` / `dbDelete*` helpers mirror
+// every write into both IndexedDB AND the _mem array so the sync layer keeps
+// working unchanged, and reloads still surface the data immediately while
+// IndexedDB hydrates.
+const DB_NAME = 'PuzzlePigDB';
+const DB_VERSION = 4;
+const STORE_NAME = 'goals';
+const USER_STORE = 'users';
+const SETTINGS_STORE = 'settings';
+const JARS_STORE = 'jars';
+const JAR_TX_STORE = 'jarTransactions';
+const CHORES_STORE = 'chores';
+const CHORE_LOG_STORE = 'choreLog';
+let db = null;
+// In-memory caches used by the Supabase sync layer (and as a hot read path).
+let _memUsers = []; let _memChores = []; let _memChoreLogs = [];
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains(STORE_NAME))      d.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      if (!d.objectStoreNames.contains(USER_STORE))      d.createObjectStore(USER_STORE, { keyPath: 'id' });
+      if (!d.objectStoreNames.contains(SETTINGS_STORE))  d.createObjectStore(SETTINGS_STORE, { keyPath: 'key' });
+      if (!d.objectStoreNames.contains(JARS_STORE))      d.createObjectStore(JARS_STORE, { keyPath: 'id' });
+      if (!d.objectStoreNames.contains(JAR_TX_STORE))    d.createObjectStore(JAR_TX_STORE, { keyPath: 'id' });
+      if (!d.objectStoreNames.contains(CHORES_STORE))    d.createObjectStore(CHORES_STORE, { keyPath: 'id' });
+      if (!d.objectStoreNames.contains(CHORE_LOG_STORE)) d.createObjectStore(CHORE_LOG_STORE, { keyPath: 'id' });
+    };
+    req.onsuccess = async (e) => {
+      db = e.target.result;
+      // Hydrate the in-memory caches from IndexedDB so the sync layer sees
+      // existing data before any pullAndMerge runs.
+      try {
+        _memUsers     = await _idbGetAll(USER_STORE);
+        _memChores    = await _idbGetAll(CHORES_STORE);
+        _memChoreLogs = await _idbGetAll(CHORE_LOG_STORE);
+        console.log('[PuzzlePig] hydrated from IndexedDB: users=', _memUsers.length, 'chores=', _memChores.length, 'choreLogs=', _memChoreLogs.length);
+      } catch(err){ console.warn('[PuzzlePig] hydration failed', err); }
+      resolve(db);
+    };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+// Internal helper: getAll from a store.
+function _idbGetAll(storeName) {
+  return new Promise((resolve, reject) => {
+    if (!db) return resolve([]);
+    const tx = db.transaction(storeName, 'readonly');
+    const req = tx.objectStore(storeName).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+function _idbPut(storeName, value) {
+  return new Promise((resolve, reject) => {
+    if (!db) return resolve();
+    const tx = db.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).put(value);
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+function _idbDelete(storeName, id) {
+  return new Promise((resolve, reject) => {
+    if (!db) return resolve();
+    const tx = db.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+// ---- Goals (IndexedDB only) ----
+function dbPut(g)      { return _idbPut(STORE_NAME, g); }
+function dbDelete(id)  { return _idbDelete(STORE_NAME, id); }
+function dbGetAll()    { return _idbGetAll(STORE_NAME); }
+
+// ---- Users (IndexedDB + _memUsers mirror) ----
+async function dbPutUser(u) {
+  const i = _memUsers.findIndex(x => x.id === u.id);
+  const copy = {...u};
+  if (i >= 0) _memUsers[i] = copy; else _memUsers.push(copy);
+  await _idbPut(USER_STORE, u);
+}
+async function dbDeleteUser(id) {
+  _memUsers = _memUsers.filter(u => u.id !== id);
+  await _idbDelete(USER_STORE, id);
+}
+function dbGetAllUsers() {
+  // Prefer the hydrated/synced in-memory cache; falls back to IDB if empty.
+  if (_memUsers && _memUsers.length) return Promise.resolve(_memUsers.map(u => ({...u})));
+  return _idbGetAll(USER_STORE);
+}
+
+// ---- Settings (IndexedDB only) ----
+function dbGetSetting(key) {
+  return new Promise((resolve, reject) => {
+    if (!db) return resolve(null);
+    const tx = db.transaction(SETTINGS_STORE, 'readonly');
+    const req = tx.objectStore(SETTINGS_STORE).get(key);
+    req.onsuccess = () => resolve(req.result ? req.result.value : null);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+function dbPutSetting(key, value) { return _idbPut(SETTINGS_STORE, { key, value }); }
+
+// ---- Jars (IndexedDB only) ----
+function dbPutJar(j)         { return _idbPut(JARS_STORE, j); }
+function dbDeleteJar(id)     { return _idbDelete(JARS_STORE, id); }
+function dbGetAllJars()      { return _idbGetAll(JARS_STORE); }
+function dbPutJarTx(t)       { return _idbPut(JAR_TX_STORE, t); }
+function dbGetAllJarTxs()    { return _idbGetAll(JAR_TX_STORE); }
+function dbDeleteJarTx(id)   { return _idbDelete(JAR_TX_STORE, id); }
+
+// ---- Chores (IndexedDB + _memChores mirror) ----
+async function dbPutChore(c) {
+  const i = _memChores.findIndex(x => x.id === c.id);
+  const copy = JSON.parse(JSON.stringify(c));
+  if (i >= 0) _memChores[i] = copy; else _memChores.push(copy);
+  await _idbPut(CHORES_STORE, c);
+}
+async function dbDeleteChore(id) {
+  _memChores = _memChores.filter(c => c.id !== id);
+  await _idbDelete(CHORES_STORE, id);
+}
+function dbGetAllChores() {
+  if (_memChores && _memChores.length) return Promise.resolve(_memChores.map(c => JSON.parse(JSON.stringify(c))));
+  return _idbGetAll(CHORES_STORE);
+}
+
+// ---- Chore logs (IndexedDB + _memChoreLogs mirror) ----
+async function dbPutChoreLog(e) {
+  const i = _memChoreLogs.findIndex(x => x.id === e.id);
+  const copy = JSON.parse(JSON.stringify(e));
+  if (i >= 0) _memChoreLogs[i] = copy; else _memChoreLogs.push(copy);
+  await _idbPut(CHORE_LOG_STORE, e);
+}
+function dbGetAllChoreLogs() {
+  if (_memChoreLogs && _memChoreLogs.length) return Promise.resolve(_memChoreLogs.map(e => JSON.parse(JSON.stringify(e))));
+  return _idbGetAll(CHORE_LOG_STORE);
+}
 
 
 // ---- Multi-user state ----
@@ -6100,11 +6226,13 @@ init();
         return;
       }
 
-      // Merge users first — chores reference them
+      // Merge users first — chores reference them. Also persist each one to
+      // IndexedDB so a reload (before the next pull) still shows them.
       for (const ru of remoteUsers){
         const i = _memUsers.findIndex(x => x.id === ru.id);
         if (i >= 0) _memUsers[i] = Object.assign({}, _memUsers[i], ru);
         else _memUsers.push(ru);
+        try { if (typeof _idbPut === 'function') await _idbPut(USER_STORE, _memUsers.find(x => x.id === ru.id)); } catch(_){}
       }
       // Always mirror into the main script's global `users` array.
       // We reference window.users (not the bare identifier) so this works even
@@ -6125,17 +6253,19 @@ init();
         }
       } catch(_){}
 
-      // Merge chores
+      // Merge chores (and persist to IndexedDB)
       for (const rc of remoteChores){
         const i = _memChores.findIndex(x => x.id === rc.id);
         if (i >= 0) _memChores[i] = Object.assign({}, _memChores[i], rc);
         else _memChores.push(rc);
+        try { if (typeof _idbPut === 'function') await _idbPut(CHORES_STORE, _memChores.find(x => x.id === rc.id)); } catch(_){}
       }
-      // Merge logs
+      // Merge logs (and persist to IndexedDB)
       for (const rl of remoteLogs){
         const i = _memChoreLogs.findIndex(x => x.id === rl.id);
         if (i >= 0) _memChoreLogs[i] = Object.assign({}, _memChoreLogs[i], rl);
         else _memChoreLogs.push(rl);
+        try { if (typeof _idbPut === 'function') await _idbPut(CHORE_LOG_STORE, _memChoreLogs.find(x => x.id === rl.id)); } catch(_){}
       }
 
       // Refresh visible-to-current-user views' working arrays
@@ -6186,11 +6316,13 @@ init();
       if (!old.local_id) return;
       _memChores = _memChores.filter(c => c.id !== old.local_id);
       if (typeof chores !== 'undefined') window.chores = chores.filter(c => c.id !== old.local_id);
+      try { if (typeof _idbDelete === 'function') _idbDelete(CHORES_STORE, old.local_id); } catch(_){}
     } else {
       const r = payload.new; if (!r || !r.local_id) return;
       const c = rowToChore(r);
       const i = _memChores.findIndex(x => x.id === c.id);
       if (i >= 0) _memChores[i] = c; else _memChores.push(c);
+      try { if (typeof _idbPut === 'function') _idbPut(CHORES_STORE, c); } catch(_){}
       // Update visible list
       if (typeof currentUserId !== 'undefined' && typeof chores !== 'undefined'){
         const visible = Array.isArray(c.assignedTo) && c.assignedTo.includes(currentUserId);
@@ -6212,6 +6344,7 @@ init();
       if (Array.isArray(window.users)) {
         window.users = window.users.filter(u => u.id !== old.local_id);
       }
+      try { if (typeof _idbDelete === 'function') _idbDelete(USER_STORE, old.local_id); } catch(_){}
       // If the currently-active user was deleted on the other device, clear it
       if (typeof window.currentUserId !== 'undefined' && window.currentUserId === old.local_id){
         try { window.currentUserId = (window.users && window.users[0] && window.users[0].id) || null; } catch(_){}
@@ -6227,6 +6360,7 @@ init();
       const u = rowToUser(r);
       const i = _memUsers.findIndex(x => x.id === u.id);
       if (i >= 0) _memUsers[i] = u; else _memUsers.push(u);
+      try { if (typeof _idbPut === 'function') _idbPut(USER_STORE, u); } catch(_){}
       if (!Array.isArray(window.users)) window.users = [];
       {
         const j = window.users.findIndex(x => x.id === u.id);
@@ -6253,12 +6387,14 @@ init();
       if (!old.local_id) return;
       _memChoreLogs = _memChoreLogs.filter(l => l.id !== old.local_id);
       if (typeof choreLogs !== 'undefined') window.choreLogs = choreLogs.filter(l => l.id !== old.local_id);
+      try { if (typeof _idbDelete === 'function') _idbDelete(CHORE_LOG_STORE, old.local_id); } catch(_){}
     } else {
       const r = payload.new; if (!r || !r.local_id) return;
       const cl = rowToLog(r);
       const wasNew = !_memChoreLogs.some(x => x.id === cl.id);
       const i = _memChoreLogs.findIndex(x => x.id === cl.id);
       if (i >= 0) _memChoreLogs[i] = cl; else _memChoreLogs.push(cl);
+      try { if (typeof _idbPut === 'function') _idbPut(CHORE_LOG_STORE, cl); } catch(_){}
       // Sync into visible array
       if (typeof currentUserId !== 'undefined' && typeof choreLogs !== 'undefined' && cl.userId === currentUserId){
         const j = choreLogs.findIndex(x => x.id === cl.id);
