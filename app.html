@@ -2459,7 +2459,7 @@ function renderUserSelect() {
     const initial = getInitial(u.name);
     const removeBtn = managingUsers ? `<div class="user-card-remove" onclick="event.stopPropagation();removeUser('${u.id}')">✕</div>` : '';
     return `
-      <div class="user-card${managingUsers ? ' editing' : ''}" onclick="${managingUsers ? '' : (window.role === 'parent' ? '' : `selectUser('${u.id}')`)}" data-testid="user-card-${u.id}">
+      <div class="user-card${managingUsers ? ' editing' : ''}" onclick="${managingUsers ? '' : ((function(){try{return localStorage.getItem('pp_role')==='parent'}catch(_){return false}})() ? '' : `selectUser('${u.id}')`)}" data-testid="user-card-${u.id}">
         ${removeBtn}
         <div class="user-avatar" style="background:${color}">${initial}</div>
         <div class="user-card-name">${esc(u.name)}</div>
@@ -3920,14 +3920,20 @@ async function renderParentSettings() {
       </button>`;
   }).join('') : '';
 
+  // On a dedicated parent device (role === 'parent'), the back arrow and the
+  // "Go to page" kid-avatar row don't make sense — the parent never acts as a
+  // child and has no parent-style user-select screen to go back to.
+  const isParentDevice = (function(){
+    try { return localStorage.getItem('pp_role') === 'parent'; } catch(_) { return false; }
+  })();
   view.innerHTML = `
     <div class="parent-page-header">
-      <button onclick="closeParentSettings()" style="background:none;border:none;cursor:pointer;padding:4px;margin-right:8px;color:var(--purple-600);">
+      ${isParentDevice ? '' : `<button onclick="closeParentSettings()" style="background:none;border:none;cursor:pointer;padding:4px;margin-right:8px;color:var(--purple-600);">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
-      </button>
+      </button>`}
       <h2 style="flex:1;">Parent Settings</h2>
     </div>
-    ${users.length > 0 ? `
+    ${(!isParentDevice && users.length > 0) ? `
     <div class="parent-avatar-row">
       <span style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">Go to page:</span>
       <div class="parent-avatar-picks">${avatarRow}</div>
