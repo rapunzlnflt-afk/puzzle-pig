@@ -5933,12 +5933,22 @@ init();
     } catch(e){ console.warn('[PuzzlePig sync] push chore exception', e); }
   }
   async function pushUser(u){
-    if (!familyId || !u || !u.id) return;
+    if (!familyId || !u || !u.id) {
+      console.warn('[PuzzlePig sync] pushUser SKIPPED — familyId:', familyId, 'user:', u);
+      return;
+    }
     markPushed(u.id);
     try {
       showSyncChip('Syncing…');
-      const { error } = await sb.from('family_users').upsert(userToRow(u), { onConflict: 'local_id' });
-      if (error) console.warn('[PuzzlePig sync] push user error', error);
+      const row = userToRow(u);
+      console.log('[PuzzlePig sync] pushUser → upsert', row);
+      const { data, error } = await sb.from('family_users').upsert(row, { onConflict: 'local_id' }).select();
+      if (error) {
+        console.warn('[PuzzlePig sync] push user ERROR', error);
+        showSyncChip('Sync failed');
+      } else {
+        console.log('[PuzzlePig sync] push user OK', data);
+      }
     } catch(e){ console.warn('[PuzzlePig sync] push user exception', e); }
   }
   async function deleteUserRemote(localId){
@@ -6124,6 +6134,7 @@ init();
   }
 
   function handleUserChange(payload){
+    console.log('[PuzzlePig sync] handleUserChange', payload.eventType, payload.new || payload.old);
     if (typeof _memUsers === 'undefined') return;
     if (payload.eventType === 'DELETE'){
       const old = payload.old || {};
@@ -6616,6 +6627,21 @@ init();
       localStorage.removeItem(LS_KID_USER_ID);
       localStorage.removeItem(LS_KID_RESET_TOKEN);
       location.reload();
+    },
+    // Diagnostic: dump everything we know about sync state
+    diag: async () => {
+      const out = {
+        role, familyId, familyCode, authUserId, kidLockedUserId,
+        memUsers: (typeof _memUsers !== 'undefined' ? _memUsers : null),
+        realtimeStatus: realtimeChannel ? realtimeChannel.state : 'none'
+      };
+      try {
+        const { data, error } = await sb.from('family_users').select('*').eq('family_id', familyId);
+        out.dbUsers = data;
+        out.dbUsersError = error ? error.message : null;
+      } catch(e){ out.dbUsersError = String(e); }
+      console.log('[PuzzlePig DIAG]', out);
+      return out;
     },
     // Parent action: unlink a kid's phone by rotating their reset_token.
     // The kid device will see the change via realtime and drop back to the picker.
