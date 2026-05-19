@@ -2277,8 +2277,12 @@ function dbGetAllChoreLogs(){ return Promise.resolve([..._memChoreLogs.map(e=>JS
 
 
 // ---- Multi-user state ----
-let users = [];
-let currentUserId = null;
+// NOTE: declared with `var` (not `let`) so they become properties of `window`.
+// The Supabase sync layer lives in a separate <script> block and assigns into
+// window.users / window.currentUserId; with `let` those assignments would be
+// orphaned on the global object and never visible to selectUser().
+var users = [];
+var currentUserId = null;
 let managingUsers = false;
 let pinCallback = null;
 
@@ -2697,7 +2701,15 @@ async function init() {
   if (isKidDevice){
     // Mark guide as seen so it never opens on kid devices
     try { await dbPutSetting('hasSeenGuide', true); } catch(_){}
-  } else {
+    // On kid devices, the Supabase sync layer is responsible for routing
+    // (initKidMode → finishKidUnlock → selectUser). The rest of init() below
+    // assumes a parent-style setup flow (PIN gates, user-select screen) and
+    // will hide #app and show the parent picker, which on kid devices is
+    // CSS-hidden — producing a blank screen.
+    console.log('[PuzzlePig] init(): kid device detected, skipping parent setup flow');
+    return;
+  }
+  {
     const hasSeenGuide = await dbGetSetting('hasSeenGuide');
     if (!hasSeenGuide) {
       openGuide();
