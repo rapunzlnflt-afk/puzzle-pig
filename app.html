@@ -1438,6 +1438,9 @@ a { color: inherit; text-decoration: none; }
   /* Hide the small "current user" switcher chip on the kid side — they can't switch */
   body.pp-kid-mode #currentUserBar .user-bar-switch,
   body.pp-kid-mode #currentUserBar [onclick*="showUserSelect"] { display:none !important; }
+  /* Parent never acts as a child; hide the Switch User button entirely */
+  body.pp-parent-mode #currentUserBar { display:none !important; }
+  body.pp-parent-mode .switch-user-btn { display:none !important; }
   /* Remove bottom-nav padding from the app on kid devices so content isn't shifted up */
   body.pp-kid-mode #app { padding-bottom: 0 !important; }
 </style>
@@ -2454,7 +2457,7 @@ function renderUserSelect() {
     const initial = getInitial(u.name);
     const removeBtn = managingUsers ? `<div class="user-card-remove" onclick="event.stopPropagation();removeUser('${u.id}')">✕</div>` : '';
     return `
-      <div class="user-card${managingUsers ? ' editing' : ''}" onclick="${managingUsers ? '' : `selectUser('${u.id}')`}" data-testid="user-card-${u.id}">
+      <div class="user-card${managingUsers ? ' editing' : ''}" onclick="${managingUsers ? '' : (window.role === 'parent' ? '' : `selectUser('${u.id}')`)}" data-testid="user-card-${u.id}">
         ${removeBtn}
         <div class="user-avatar" style="background:${color}">${initial}</div>
         <div class="user-card-name">${esc(u.name)}</div>
@@ -6405,9 +6408,9 @@ init();
         const j = choreLogs.findIndex(x => x.id === cl.id);
         if (j >= 0) choreLogs[j] = JSON.parse(JSON.stringify(cl)); else choreLogs.push(JSON.parse(JSON.stringify(cl)));
       }
-      // Parent: surface a toast for incoming pending logs from kid
+      // Parent: surface a single combined toast for any pending kid logs
       if (role === 'parent' && cl.status === 'pending' && wasNew && !recentlyPushed.has(cl.id)){
-        showParentToast(cl);
+        try { showParentPendingToast(); } catch(_){}
       }
       // Kid device: credit jar when a log transitions to 'approved'
       if (role === 'child' && cl.status === 'approved' && (!prev || prev.status !== 'approved')){
@@ -6486,38 +6489,37 @@ init();
   try { window.creditKidJarFromApprovedLog = creditKidJarFromApprovedLog; } catch(_){}
 
   // ---------- parent toast ----------
-  function showParentToast(cl){
+  // Combined toast: shows total pending count across all kids. Tap to jump to parent settings.
+  function showParentPendingToast(){
+    if (role !== 'parent') return;
     const toast = document.getElementById('ppParentToast');
     const body  = document.getElementById('ppParentToastBody');
     if (!toast || !body) return;
-    const choreName = cl._choreName || ((typeof _memChores !== 'undefined' && (_memChores.find(c=>c.id===cl.choreId)||{}).name) || 'a chore');
-    const amt = cl._amount || ((typeof _memChores !== 'undefined' && (_memChores.find(c=>c.id===cl.choreId)||{}).amount) || 0);
-    body.innerHTML = '<strong>' + escapeHTML(choreName) + '</strong> &middot; $' + (Number(amt).toFixed(2)) + '<br><span style="opacity:.7;">Tap Approve or Deny.</span>';
+    const pendingCount = (typeof _memChoreLogs !== 'undefined')
+      ? _memChoreLogs.filter(l => l && l.status === 'pending').length : 0;
+    if (pendingCount <= 0){ toast.style.display = 'none'; return; }
+    const noun = pendingCount === 1 ? 'chore' : 'chores';
+    body.innerHTML = '<strong>' + pendingCount + ' ' + noun + '</strong> waiting for your approval.<br>'
+      + '<span style="opacity:.7;">Tap to review.</span>';
     toast.style.display = 'block';
-    // Wire buttons (replace handlers each time)
+    // Hide the per-chore Approve/Deny buttons in the combined toast
     const approveBtn = document.getElementById('ppParentToastApprove');
     const denyBtn    = document.getElementById('ppParentToastDeny');
-    const closeBtn   = document.getElementById('ppParentToastClose');
-    const hide = () => { toast.style.display = 'none'; };
-    approveBtn.onclick = async () => {
-      hide();
-      cl.status = 'approved';
-      cl.approvedAt = new Date().toISOString();
-      const i = _memChoreLogs.findIndex(x => x.id === cl.id);
-      if (i >= 0) _memChoreLogs[i] = cl;
-      if (typeof dbPutChoreLog === 'function') await dbPutChoreLog(cl);
-      safeRerender();
+    if (approveBtn) approveBtn.style.display = 'none';
+    if (denyBtn) denyBtn.style.display = 'none';
+    const closeBtn = document.getElementById('ppParentToastClose');
+    if (closeBtn) closeBtn.onclick = () => { toast.style.display = 'none'; };
+    // Tap body to jump to parent settings (chore review section)
+    body.style.cursor = 'pointer';
+    body.onclick = () => {
+      toast.style.display = 'none';
+      try {
+        if (typeof showView === 'function') showView('parentSettingsView');
+        else if (typeof renderParentSettings === 'function') renderParentSettings();
+      } catch(_){}
     };
-    denyBtn.onclick = async () => {
-      hide();
-      cl.status = 'denied';
-      const i = _memChoreLogs.findIndex(x => x.id === cl.id);
-      if (i >= 0) _memChoreLogs[i] = cl;
-      if (typeof dbPutChoreLog === 'function') await dbPutChoreLog(cl);
-      safeRerender();
-    };
-    closeBtn.onclick = hide;
   }
+  try { window.showParentPendingToast = showParentPendingToast; } catch(_){}
   function escapeHTML(s){ const d=document.createElement('div'); d.textContent = (s==null?'':String(s)); return d.innerHTML; }
 
   // ---------- auth + setup overlay ----------
@@ -6935,6 +6937,7 @@ init();
     // If this is a kid device, lock the UI down immediately so the parent
     // user-select screen never flashes.
     if (role === 'child') enterKidMode();
+    if (role === 'parent') { try { document.body.classList.add('pp-parent-mode'); } catch(_){} }
     wrapLocalWriters();
     // Wait until the local _mem arrays exist (init() finished basic setup)
     for (let i=0; i<40 && (typeof _memChores === 'undefined'); i++){
