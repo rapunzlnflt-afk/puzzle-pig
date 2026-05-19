@@ -6047,20 +6047,37 @@ init();
       const remoteChores = (choresRes.data || []).map(rowToChore);
       const remoteLogs   = (logsRes.data   || []).map(rowToLog);
       const remoteUsers  = (usersRes.data  || []).map(rowToUser);
+      console.log('[PuzzlePig sync] pullAndMerge fetched', { users: remoteUsers.length, chores: remoteChores.length, logs: remoteLogs.length, familyId });
 
-      if (typeof _memChores === 'undefined' || typeof _memChoreLogs === 'undefined') return;
+      // Wait for the local _mem arrays to exist before merging — init() may not
+      // have finished setting them up yet on a kid phone that just joined.
+      for (let wait = 0; wait < 50 && (typeof _memUsers === 'undefined' || typeof _memChores === 'undefined' || typeof _memChoreLogs === 'undefined'); wait++){
+        await new Promise(r => setTimeout(r, 100));
+      }
+      if (typeof _memUsers === 'undefined' || typeof _memChores === 'undefined' || typeof _memChoreLogs === 'undefined'){
+        console.warn('[PuzzlePig sync] pullAndMerge: _mem arrays never appeared, giving up');
+        return;
+      }
 
       // Merge users first — chores reference them
-      if (typeof _memUsers !== 'undefined'){
-        for (const ru of remoteUsers){
-          const i = _memUsers.findIndex(x => x.id === ru.id);
-          if (i >= 0) _memUsers[i] = Object.assign({}, _memUsers[i], ru);
-          else _memUsers.push(ru);
-        }
-        if (typeof users !== 'undefined' && Array.isArray(users)){
-          window.users = _memUsers.map(u => ({...u}));
-        }
+      for (const ru of remoteUsers){
+        const i = _memUsers.findIndex(x => x.id === ru.id);
+        if (i >= 0) _memUsers[i] = Object.assign({}, _memUsers[i], ru);
+        else _memUsers.push(ru);
       }
+      if (typeof users !== 'undefined' && Array.isArray(users)){
+        window.users = _memUsers.map(u => ({...u}));
+      }
+      console.log('[PuzzlePig sync] pullAndMerge merged users → _memUsers now has', _memUsers.length, 'entries');
+      // If the kid pick screen is currently waiting, refresh it now that users exist
+      try {
+        if (role === 'child' && !kidLockedUserId){
+          const pick = document.getElementById('kidPickScreen');
+          if (pick && pick.style.display !== 'none' && typeof renderKidPickGrid === 'function'){
+            renderKidPickGrid();
+          }
+        }
+      } catch(_){}
 
       // Merge chores
       for (const rc of remoteChores){
