@@ -6474,7 +6474,7 @@ init();
     } catch(_){}
     _markLogCredited(cl.id);
     console.log('[creditKidJar] credited $' + amount.toFixed(2) + ' to jar ' + jar.id + ' for log ' + cl.id);
-    // Refresh visible jars + home view so kid sees new balance immediately
+    // Refresh visible jars, goals, and home view so kid sees new balance immediately
     try {
       if (typeof currentUserId !== 'undefined' && typeof dbGetAllJars === 'function'){
         const allJ2 = await dbGetAllJars();
@@ -6482,8 +6482,13 @@ init();
           window.jars = allJ2.filter(j => j.userId === currentUserId);
         }
       }
+      if (typeof dbGetAll === 'function' && typeof goals !== 'undefined'){
+        const allG2 = await dbGetAll();
+        window.goals = allG2.filter(g => g.userId === currentUserId);
+      }
       if (typeof renderJarsView === 'function') renderJarsView();
       if (typeof renderHome === 'function') renderHome();
+      if (typeof renderPuzzle === 'function' && typeof currentGoalId !== 'undefined' && currentGoalId) renderPuzzle();
     } catch(_){}
   }
   try { window.creditKidJarFromApprovedLog = creditKidJarFromApprovedLog; } catch(_){}
