@@ -6395,7 +6395,8 @@ init();
     } else {
       const r = payload.new; if (!r || !r.local_id) return;
       const cl = rowToLog(r);
-      const wasNew = !_memChoreLogs.some(x => x.id === cl.id);
+      const prev = _memChoreLogs.find(x => x.id === cl.id) || null;
+      const wasNew = !prev;
       const i = _memChoreLogs.findIndex(x => x.id === cl.id);
       if (i >= 0) _memChoreLogs[i] = cl; else _memChoreLogs.push(cl);
       try { if (typeof _idbPut === 'function') _idbPut(CHORE_LOG_STORE, cl); } catch(_){}
@@ -6408,9 +6409,70 @@ init();
       if (role === 'parent' && cl.status === 'pending' && wasNew && !recentlyPushed.has(cl.id)){
         showParentToast(cl);
       }
+      // Kid device: credit jar when a log transitions to 'approved'
+      if (role === 'child' && cl.status === 'approved' && (!prev || prev.status !== 'approved')){
+        creditKidJarFromApprovedLog(cl).catch(err => console.warn('[creditKidJar] failed', err));
+      }
     }
     safeRerender();
   }
+
+  // ---------- kid-side jar credit on approval ----------
+  const CREDITED_LOGS_KEY = 'pp_credited_log_ids';
+  function _getCreditedLogIds(){
+    try { return new Set(JSON.parse(localStorage.getItem(CREDITED_LOGS_KEY) || '[]')); }
+    catch(_) { return new Set(); }
+  }
+  function _markLogCredited(id){
+    try {
+      const s = _getCreditedLogIds(); s.add(id);
+      // Cap to last 500 to avoid unbounded growth
+      const arr = Array.from(s); const trimmed = arr.slice(-500);
+      localStorage.setItem(CREDITED_LOGS_KEY, JSON.stringify(trimmed));
+    } catch(_){}
+  }
+  async function creditKidJarFromApprovedLog(cl){
+    if (!cl || cl.status !== 'approved') return;
+    if (typeof currentUserId === 'undefined' || cl.userId !== currentUserId) return;
+    const credited = _getCreditedLogIds();
+    if (credited.has(cl.id)) return; // idempotent
+    // Find chore amount
+    const chore = (typeof _memChores !== 'undefined' && _memChores.find(c => c.id === cl.choreId)) || null;
+    const amount = Number((chore && chore.amount) || cl._amount || 0);
+    if (!amount || amount <= 0) return;
+    if (typeof dbGetAllJars !== 'function' || typeof dbPutJar !== 'function') return;
+    const allJ = await dbGetAllJars();
+    const userJars = allJ.filter(j => j.userId === currentUserId);
+    if (!userJars.length) return;
+    const jar = userJars.find(j => j.type === 'save') || userJars[0];
+    jar.balance = Number(jar.balance || 0) + amount;
+    await dbPutJar(jar);
+    try {
+      if (typeof dbPutJarTx === 'function'){
+        const now = new Date().toISOString();
+        const note = 'Chore: ' + ((chore && chore.name) || cl._choreName || 'Chore');
+        await dbPutJarTx({ id: 'jartx_' + Date.now() + '_' + cl.id, jarId: jar.id, userId: currentUserId, amount, type: 'chore', note, createdAt: now });
+      }
+    } catch(_){}
+    // Credit goals only if jar is the Save jar
+    try {
+      if (jar.type === 'save' && typeof creditGoalsForUser === 'function' && typeof dbGetAll === 'function'){
+        const allGoalsNow = await dbGetAll();
+        const userGoals = allGoalsNow.filter(g => g.userId === currentUserId);
+        await creditGoalsForUser(amount, new Date().toISOString(), 'Chore: ' + ((chore && chore.name) || 'Chore'), userGoals);
+      }
+    } catch(_){}
+    // Refresh in-memory jars array if present
+    try {
+      if (typeof jars !== 'undefined'){
+        const k = jars.findIndex(x => x.id === jar.id);
+        if (k >= 0) jars[k] = JSON.parse(JSON.stringify(jar));
+      }
+    } catch(_){}
+    _markLogCredited(cl.id);
+    console.log('[creditKidJar] credited $' + amount.toFixed(2) + ' to jar ' + jar.id + ' for log ' + cl.id);
+  }
+  try { window.creditKidJarFromApprovedLog = creditKidJarFromApprovedLog; } catch(_){}
 
   // ---------- parent toast ----------
   function showParentToast(cl){
