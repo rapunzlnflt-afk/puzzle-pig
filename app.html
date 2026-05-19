@@ -1430,6 +1430,7 @@ a { color: inherit; text-decoration: none; }
   body.pp-kid-mode #manageUsersBtn,
   body.pp-kid-mode [data-testid="user-card-parent"],
   body.pp-kid-mode [data-testid="add-user-btn"],
+  body.pp-kid-mode #bottomNav,             /* Hide the whole bottom nav — kids only see homeView */
   body.pp-kid-mode #userSelectScreen {       /* never show the avatar picker on kid devices */
     display: none !important;
   }
@@ -1437,6 +1438,8 @@ a { color: inherit; text-decoration: none; }
   /* Hide the small "current user" switcher chip on the kid side — they can't switch */
   body.pp-kid-mode #currentUserBar .user-bar-switch,
   body.pp-kid-mode #currentUserBar [onclick*="showUserSelect"] { display:none !important; }
+  /* Remove bottom-nav padding from the app on kid devices so content isn't shifted up */
+  body.pp-kid-mode #app { padding-bottom: 0 !important; }
 </style>
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
