@@ -6091,10 +6091,15 @@ init();
         if (i >= 0) _memUsers[i] = Object.assign({}, _memUsers[i], ru);
         else _memUsers.push(ru);
       }
-      if (typeof users !== 'undefined' && Array.isArray(users)){
-        window.users = _memUsers.map(u => ({...u}));
-      }
-      console.log('[PuzzlePig sync] pullAndMerge merged users → _memUsers now has', _memUsers.length, 'entries');
+      // Always mirror into the main script's global `users` array.
+      // We reference window.users (not the bare identifier) so this works even
+      // though `let users` lives in a different <script> block.
+      try {
+        if (!Array.isArray(window.users)) window.users = [];
+        window.users.length = 0;
+        for (const u of _memUsers) window.users.push({...u});
+      } catch(_) {}
+      console.log('[PuzzlePig sync] pullAndMerge merged users → _memUsers now has', _memUsers.length, 'entries; window.users.length =', (window.users && window.users.length));
       // If the kid pick screen is currently waiting, refresh it now that users exist
       try {
         if (role === 'child' && !kidLockedUserId){
@@ -6189,10 +6194,12 @@ init();
       const old = payload.old || {};
       if (!old.local_id) return;
       _memUsers = _memUsers.filter(u => u.id !== old.local_id);
-      if (typeof users !== 'undefined') window.users = users.filter(u => u.id !== old.local_id);
+      if (Array.isArray(window.users)) {
+        window.users = window.users.filter(u => u.id !== old.local_id);
+      }
       // If the currently-active user was deleted on the other device, clear it
-      if (typeof currentUserId !== 'undefined' && currentUserId === old.local_id){
-        try { window.currentUserId = (users && users[0] && users[0].id) || null; } catch(_){}
+      if (typeof window.currentUserId !== 'undefined' && window.currentUserId === old.local_id){
+        try { window.currentUserId = (window.users && window.users[0] && window.users[0].id) || null; } catch(_){}
       }
       // Kid-mode: if the kid this phone was locked to was deleted, drop back to picker
       if (role === 'child' && kidLockedUserId === old.local_id){
@@ -6205,9 +6212,10 @@ init();
       const u = rowToUser(r);
       const i = _memUsers.findIndex(x => x.id === u.id);
       if (i >= 0) _memUsers[i] = u; else _memUsers.push(u);
-      if (typeof users !== 'undefined' && Array.isArray(users)){
-        const j = users.findIndex(x => x.id === u.id);
-        if (j >= 0) users[j] = {...u}; else users.push({...u});
+      if (!Array.isArray(window.users)) window.users = [];
+      {
+        const j = window.users.findIndex(x => x.id === u.id);
+        if (j >= 0) window.users[j] = {...u}; else window.users.push({...u});
       }
       // Kid-mode: check if the parent has just reset this device for the locked kid
       try { checkKidResetFromRow(r); } catch(_){}
@@ -6434,8 +6442,8 @@ init();
       const u = _memUsers.find(x => x.id === id);
       if (u) return u;
     }
-    if (typeof users !== 'undefined' && Array.isArray(users)){
-      return users.find(x => x.id === id) || null;
+    if (Array.isArray(window.users)){
+      return window.users.find(x => x.id === id) || null;
     }
     return null;
   }
@@ -6575,6 +6583,16 @@ init();
 
   async function finishKidUnlock(kidId){
     hideKidScreens();
+    // Make absolutely sure the kid is in the main script's `users` array
+    // before we hand off to selectUser(). selectUser() bails out silently
+    // if users.find(id) returns undefined.
+    try {
+      if (!Array.isArray(window.users)) window.users = [];
+      const kid = (typeof _memUsers !== 'undefined') ? _memUsers.find(u => u.id === kidId) : null;
+      if (kid && !window.users.find(u => u.id === kidId)){
+        window.users.push({...kid});
+      }
+    } catch(_){}
     // Ensure this kid has jars locally on this device. Parent-side users
     // only synced through Supabase, so the kid phone has no jars/chores
     // in IndexedDB yet. Without this, selectUser() routes to jarsView
@@ -6584,11 +6602,19 @@ init();
         await autoCreateJarsForUser(kidId);
       }
     } catch(e){ console.warn('[PuzzlePig kid] autoCreateJarsForUser failed', e); }
+    console.log('[PuzzlePig kid] finishKidUnlock about to selectUser', kidId, 'window.users.length =', (window.users && window.users.length));
     // Use the existing selectUser() to actually enter the app as that kid
     if (typeof selectUser === 'function'){
       try { await selectUser(kidId); }
       catch(e){ console.warn('[PuzzlePig kid] selectUser failed', e); }
     }
+    // Post-flight diagnostic so we can see what selectUser actually did
+    try {
+      const app = document.getElementById('app');
+      console.log('[PuzzlePig kid] after selectUser: app:', (app ? app.style.display : 'missing'),
+        'currentUserId:', window.currentUserId,
+        'users.length:', (window.users && window.users.length));
+    } catch(_){}
   }
 
   async function initKidMode(){
