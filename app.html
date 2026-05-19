@@ -7009,6 +7009,22 @@ init();
           const ps = document.getElementById('parentSettingsView');
           if (ps && !ps.classList.contains('active')) ps.classList.add('active');
           console.log('[PuzzlePig parent] routed to parentSettingsView, users=', (window.users && window.users.length), 'innerHTML.length=', (ps ? ps.innerHTML.length : 'n/a'));
+          // EXPLICIT awaited render with full error logging — showView fires it async without catch
+          if (typeof renderParentSettings === 'function'){
+            Promise.resolve().then(() => renderParentSettings())
+              .then(() => {
+                const ps2 = document.getElementById('parentSettingsView');
+                console.log('[PuzzlePig parent] renderParentSettings OK, innerHTML.length=', ps2 ? ps2.innerHTML.length : 'n/a');
+              })
+              .catch(err => {
+                console.error('[PuzzlePig parent] renderParentSettings FAILED:', err && err.stack ? err.stack : err);
+                // Fallback minimal UI so the user has SOMETHING to click
+                const ps2 = document.getElementById('parentSettingsView');
+                if (ps2 && ps2.innerHTML.length < 200){
+                  ps2.innerHTML = '<div style="padding:24px;font-family:system-ui;"><h2 style="margin:0 0 12px;">Parent Settings</h2><p style="color:#b00;margin:0 0 16px;">The settings page failed to load. Check console for the red error above.</p><button onclick="location.reload()" style="padding:10px 16px;border-radius:8px;border:1px solid #888;background:#fff;cursor:pointer;">Reload</button></div>';
+                }
+              });
+          }
         } catch(e){ console.warn('[PuzzlePig parent] route failed', e); }
       };
       routeParent();
