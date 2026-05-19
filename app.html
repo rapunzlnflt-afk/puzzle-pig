@@ -1441,6 +1441,8 @@ a { color: inherit; text-decoration: none; }
   /* Parent never acts as a child; hide the Switch User button entirely */
   body.pp-parent-mode #currentUserBar { display:none !important; }
   body.pp-parent-mode .switch-user-btn { display:none !important; }
+  /* Parent never sees the avatar picker — they have their own settings view */
+  body.pp-parent-mode #userSelectScreen { display:none !important; }
   /* Remove bottom-nav padding from the app on kid devices so content isn't shifted up */
   body.pp-kid-mode #app { padding-bottom: 0 !important; }
 </style>
@@ -5980,6 +5982,11 @@ init();
   let familyId = localStorage.getItem(LS_FAMILY_ID) || null;
   let role     = localStorage.getItem(LS_ROLE)      || null;
   let familyCode = localStorage.getItem(LS_CODE)    || null;
+  // Apply body class as early as possible so CSS hides the wrong screens before init() runs
+  try {
+    if (role === 'parent') document.body.classList.add('pp-parent-mode');
+    if (role === 'child')  document.body.classList.add('pp-kid-mode');
+  } catch(_){}
   let authUserId = null;
   let realtimeChannel = null;
   // Track local_ids we just wrote so realtime echoes don't trigger redundant re-renders
