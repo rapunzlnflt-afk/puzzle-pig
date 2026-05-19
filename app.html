@@ -6973,18 +6973,30 @@ init();
       // Parent: now that sync has hydrated users, hide the avatar picker and
       // route straight to parent settings. CSS already hides userSelectScreen,
       // but init() left #app hidden — show it and render.
-      try {
-        const sel = document.getElementById('userSelectScreen');
-        if (sel) sel.style.display = 'none';
-        const appEl = document.getElementById('app');
-        if (appEl) appEl.style.display = '';
-        // Make sure visible users array has data from sync
-        if (typeof _memUsers !== 'undefined' && _memUsers.length > 0){
-          window.users = _memUsers.map(u => JSON.parse(JSON.stringify(u)));
-        }
-        if (typeof showView === 'function') showView('parentSettingsView');
-        console.log('[PuzzlePig parent] routed to parentSettingsView, users=', (window.users && window.users.length));
-      } catch(e){ console.warn('[PuzzlePig parent] route failed', e); }
+      const routeParent = () => {
+        try {
+          const sel = document.getElementById('userSelectScreen');
+          if (sel) sel.style.display = 'none';
+          const appEl = document.getElementById('app');
+          if (appEl) appEl.style.display = '';
+          // Make sure visible users array has data from sync
+          if (typeof _memUsers !== 'undefined' && _memUsers.length > 0){
+            window.users = _memUsers.map(u => JSON.parse(JSON.stringify(u)));
+          }
+          if (typeof showView === 'function') showView('parentSettingsView');
+          // Belt-and-suspenders: explicitly clear .active from any view that isn't parentSettings
+          document.querySelectorAll('.view').forEach(v => {
+            if (v.id !== 'parentSettingsView') v.classList.remove('active');
+          });
+          const ps = document.getElementById('parentSettingsView');
+          if (ps && !ps.classList.contains('active')) ps.classList.add('active');
+          console.log('[PuzzlePig parent] routed to parentSettingsView, users=', (window.users && window.users.length), 'innerHTML.length=', (ps ? ps.innerHTML.length : 'n/a'));
+        } catch(e){ console.warn('[PuzzlePig parent] route failed', e); }
+      };
+      routeParent();
+      // Re-route a couple times to defeat any late showView calls from init() or other handlers
+      setTimeout(routeParent, 200);
+      setTimeout(routeParent, 800);
     }
   }
 
