@@ -1425,93 +1425,109 @@ a { color: inherit; text-decoration: none; }
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-   <!-- ===== Puzzle Pig: Family Setup Screen ===== -->
+<!-- ===== Puzzle Pig: Family Setup Overlay (purple themed) ===== -->
 <div id="familySetupScreen" style="
-  position: fixed;
-  top: 0; left: 0;
-  width: 100vw; height: 100vh;
-  background: linear-gradient(135deg, #ffe5f0 0%, #ffd6e8 100%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  font-family: sans-serif;
-  padding: 20px;
-  box-sizing: border-box;
+  display:none;
+  position:fixed; top:0; left:0; right:0; bottom:0;
+  width:100vw; height:100vh;
+  background: linear-gradient(160deg, #5C4287 0%, #6A4C96 60%, #7B5AA8 100%);
+  align-items:center; justify-content:center;
+  z-index:99999;
+  padding:24px; box-sizing:border-box;
+  font-family:'DM Sans','Pally',system-ui,-apple-system,sans-serif;
+  color:#fff;
+  overflow-y:auto;
 ">
-  <h1 style="color: #c2185b; font-size: 36px; margin-bottom: 10px;">🐷 Puzzle Pig</h1>
-  <p style="color: #555; font-size: 18px; margin-bottom: 40px; text-align: center;">
-    Are you a parent or a child?
-  </p>
+  <div style="width:100%; max-width:380px; text-align:center;">
+    <div style="font-size:64px; line-height:1; margin-bottom:8px;">🐷</div>
+    <h1 style="font-family:'Pally','DM Sans',sans-serif; font-size:34px; font-weight:700; margin:0 0 8px 0; color:#fff; letter-spacing:-0.5px;">Puzzle Pig</h1>
+    <p id="familySetupHeadline" style="font-size:17px; opacity:0.92; margin:0 0 32px 0; line-height:1.4;">Set up your family to sync chores between devices.</p>
 
-  <button id="startFamilyBtn" style="
-    background: #ec407a;
-    color: white;
-    border: none;
-    padding: 18px 40px;
-    font-size: 18px;
-    border-radius: 12px;
-    margin-bottom: 16px;
-    cursor: pointer;
-    width: 100%;
-    max-width: 320px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-  ">
-    👨‍👩‍👧 I'm a Parent — Start a Family
-  </button>
+    <!-- Choice view -->
+    <div id="familySetupChoice">
+      <button id="startFamilyBtn" style="
+        background:#fff; color:#5C4287;
+        border:none; padding:18px 24px; font-size:17px; font-weight:600;
+        border-radius:14px; margin-bottom:14px; cursor:pointer; width:100%;
+        box-shadow:0 6px 18px rgba(0,0,0,0.18);
+        font-family:inherit;
+      ">I'm a Parent</button>
+      <button id="joinFamilyBtn" style="
+        background:transparent; color:#fff;
+        border:2px solid rgba(255,255,255,0.6); padding:16px 24px; font-size:17px; font-weight:600;
+        border-radius:14px; cursor:pointer; width:100%;
+        font-family:inherit;
+      ">I'm a Kid</button>
+    </div>
 
-  <button id="joinFamilyBtn" style="
-    background: #ffffff;
-    color: #c2185b;
-    border: 2px solid #ec407a;
-    padding: 18px 40px;
-    font-size: 18px;
-    border-radius: 12px;
-    cursor: pointer;
-    width: 100%;
-    max-width: 320px;
-  ">
-    🧒 I'm a Kid — Join My Family
-  </button>
+    <!-- Parent: code display view -->
+    <div id="familySetupParentCode" style="display:none;">
+      <div style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); border-radius:16px; padding:24px 20px; margin-bottom:16px;">
+        <div style="font-size:13px; opacity:0.85; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:10px;">Your Family Code</div>
+        <div id="familyCodeDisplay" style="font-family:'DM Sans',monospace; font-size:42px; font-weight:700; letter-spacing:6px; color:#fff; margin-bottom:6px;">------</div>
+        <div style="font-size:13px; opacity:0.85; line-height:1.45;">Share this code with your kid's device to connect.</div>
+      </div>
+      <button id="familySetupDoneBtn" style="
+        background:#fff; color:#5C4287;
+        border:none; padding:16px 24px; font-size:16px; font-weight:600;
+        border-radius:12px; cursor:pointer; width:100%;
+        font-family:inherit;
+      ">Continue to App</button>
+    </div>
 
-  <p id="familySetupStatus" style="margin-top: 30px; color: #888; font-size: 14px; min-height: 20px;"></p>
-</div>
+    <!-- Child: code entry view -->
+    <div id="familySetupChildEntry" style="display:none;">
+      <label style="display:block; font-size:13px; opacity:0.85; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:10px;">Enter Family Code</label>
+      <input id="familyCodeInput" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABC234"
+        style="width:100%; padding:18px 16px; font-size:28px; font-weight:700; letter-spacing:8px; text-align:center;
+               border:2px solid rgba(255,255,255,0.5); border-radius:14px; background:rgba(255,255,255,0.12); color:#fff;
+               box-sizing:border-box; text-transform:uppercase; font-family:'DM Sans',monospace; margin-bottom:14px;">
+      <button id="familyJoinSubmitBtn" style="
+        background:#fff; color:#5C4287;
+        border:none; padding:16px 24px; font-size:16px; font-weight:600;
+        border-radius:12px; cursor:pointer; width:100%; margin-bottom:10px;
+        font-family:inherit;
+      ">Join Family</button>
+      <button id="familyJoinBackBtn" style="
+        background:transparent; color:#fff;
+        border:none; padding:10px; font-size:14px; cursor:pointer; width:100%; opacity:0.85;
+        font-family:inherit;
+      ">← Back</button>
+    </div>
 
-<!-- ===== Puzzle Pig: Parent Dashboard ===== -->
-<div id="parentDashboard" style="
-  display: none;
-  position: fixed;
-  top: 0; left: 0;
-  width: 100vw; height: 100vh;
-  background: linear-gradient(135deg, #fff5f8 0%, #fdeef3 100%);
-  font-family: sans-serif;
-  padding: 20px;
-  box-sizing: border-box;
-  overflow-y: auto;
-  z-index: 9998;
-">
-  <h1 style="color: #c2185b; font-size: 28px; margin-bottom: 4px;">👨‍👩‍👧 Parent Dashboard</h1>
-  <p style="color: #888; font-size: 14px; margin-top: 0;">Add chores and review your child's progress.</p>
-
-  <!-- Add Chore Form -->
-  <div style="margin-top: 20px; background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
-    <h2 style="font-size: 18px; color: #c2185b; margin-top: 0;">Add a new chore</h2>
-    <input id="newChoreTitle" type="text" placeholder="e.g. Brush teeth"
-      style="width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box;">
-    <button id="addChoreBtn"
-      style="margin-top: 10px; background: #ec407a; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%;">
-      ➕ Add Chore
-    </button>
-    <p id="addChoreStatus" style="color: #888; font-size: 13px; min-height: 18px; margin-top: 8px;"></p>
-  </div>
-
-  <!-- Chore List -->
-  <div style="margin-top: 20px;">
-    <h2 style="font-size: 18px; color: #c2185b;">Family Chores</h2>
-    <div id="parentChoreList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+    <p id="familySetupStatus" style="margin-top:20px; font-size:14px; min-height:20px; opacity:0.95;"></p>
   </div>
 </div>
+
+<!-- ===== Puzzle Pig: Parent Toast (pending chore approvals from kid) ===== -->
+<div id="ppParentToast" style="
+  display:none; position:fixed; top:16px; left:50%; transform:translateX(-50%);
+  z-index:99998; max-width:92vw; min-width:280px;
+  background:#fff; color:#2D2A26; border:1px solid #E2DAF0; border-left:5px solid #5C4287;
+  border-radius:14px; box-shadow:0 12px 32px rgba(74,53,112,0.25);
+  padding:14px 16px; font-family:'DM Sans',system-ui,sans-serif;
+">
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+    <div style="font-size:22px;">⭐</div>
+    <div style="flex:1;">
+      <div style="font-weight:700; font-size:14px; color:#5C4287;">Chore completed!</div>
+      <div id="ppParentToastBody" style="font-size:13px; color:#52525E; margin-top:2px;"></div>
+    </div>
+    <button id="ppParentToastClose" style="background:none; border:none; font-size:18px; color:#A0A0AE; cursor:pointer; padding:0 4px;">×</button>
+  </div>
+  <div style="display:flex; gap:8px; margin-top:6px;">
+    <button id="ppParentToastDeny" style="flex:1; background:#fff; color:#EF4444; border:1.5px solid #EF4444; padding:9px; border-radius:10px; font-weight:600; font-size:13px; cursor:pointer; font-family:inherit;">Deny</button>
+    <button id="ppParentToastApprove" style="flex:1; background:#22C55E; color:#fff; border:none; padding:9px; border-radius:10px; font-weight:600; font-size:13px; cursor:pointer; font-family:inherit;">Approve</button>
+  </div>
+</div>
+
+<!-- ===== Puzzle Pig: Sync indicator chip ===== -->
+<div id="ppSyncChip" style="
+  display:none; position:fixed; bottom:84px; right:12px; z-index:9000;
+  background:rgba(92,66,135,0.92); color:#fff; font-size:11px; font-weight:600;
+  padding:6px 10px; border-radius:999px; font-family:'DM Sans',system-ui,sans-serif;
+  box-shadow:0 4px 12px rgba(0,0,0,0.15); pointer-events:none;
+">Syncing…</div>
    <div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#6E6E7E,#D8D8DE,#F4F4F8,#D8D8DE,#6E6E7E);padding:6px 16px;text-align:center;font:600 13px/1.4 'Pally',sans-serif;color:#52525E;letter-spacing:.5px;">DEMO — Data resets on refresh &nbsp;|&nbsp; <a href="https://www.etsy.com/listing/4490566794/puzzle-piggy-kids-savings-tracker-chore" style="color:#7C5AC7;text-decoration:underline;font-weight:700;">Get the Full Version</a></div>
 <div style="height:32px;"></div>
 <!-- ===== USER SELECT SCREEN ===== -->
@@ -5617,240 +5633,543 @@ function daysUntil(dateStr) {
 init();
 </script>
 <script>
-  // ===== Puzzle Pig: Supabase Connection =====
+// ============================================================
+// ===== SUPABASE SYNC =====
+// Two-device sync for Puzzle Pig (parent + child) via Supabase.
+// Layered ON TOP of existing in-memory (_memChores/_memChoreLogs)
+// and IndexedDB storage. Local writes are mirrored to Supabase
+// keyed on local_id. Realtime updates merge back into local
+// arrays and trigger re-renders.
+// ============================================================
+(function(){
+  'use strict';
+
   const SUPABASE_URL = "https://qwnbycvkrxikgxsrncen.supabase.co";
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF3bmJ5Y3Zrcnhpa2d4c3JuY2VuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNzg2MzAsImV4cCI6MjA5NDY1NDYzMH0.y3xoGdrcNcNA5ug0957EkJlZemRaDQ5bRS91WgEs91o";
 
-  const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-  // Quick test: confirm the connection loads without errors
-  console.log("Puzzle Pig Supabase client ready:", supabaseClient);
-  // ===== Puzzle Pig: Check Existing User =====
-
-// Global state so other parts of the app can know who's signed in
-window.currentUserProfile = null;
-
-async function checkExistingUser() {
-  // Step 1: Is there a current session?
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if (!session) {
-    console.log("No existing session — showing setup screen.");
+  if (typeof supabase === 'undefined' || !supabase.createClient) {
+    console.error('[PuzzlePig sync] Supabase JS library failed to load.');
     return;
   }
 
-  // Step 2: Does this user have a profile?
-  const userId = session.user.id;
-  const { data: profile, error } = await supabaseClient
-    .from("profiles")
-    .select("*")
-    .eq("user_id", userId)
-    .single();
-
-  if (error || !profile) {
-    console.log("Signed in but no profile yet — showing setup screen.");
-    return;
-  }
-
-  // Step 3: User has a profile — hide the setup screen
-  console.log("Existing user found:", profile);
-  window.currentUserProfile = profile;
-
-  const setupScreen = document.getElementById("familySetupScreen");
-  if (setupScreen) {
-    setupScreen.style.display = "none";
-  }
-
-  // Friendly note in the console — dashboards come next
-  if (profile.role === "parent") {
-    console.log("👨‍👩‍👧 Welcome back, Parent! (Parent dashboard coming in next baby step.)");
-     showParentDashboard();
-  } else if (profile.role === "child") {
-    console.log("🧒 Welcome back, Kid! (Child dashboard coming in next baby step.)");
-  }
-}
-
-// Run the check as soon as the page loads
-checkExistingUser();
-   // ===== Puzzle Pig: Family Setup Logic =====
-
-// Helper: show a status message on the setup screen
-function setSetupStatus(message) {
-  const el = document.getElementById("familySetupStatus");
-  if (el) el.textContent = message;
-}
-
-// Helper: generate a 6-digit family code
-function generateFamilyCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-// Parent: Start a Family
-document.getElementById("startFamilyBtn").addEventListener("click", async () => {
-  setSetupStatus("Setting up your family...");
-
-  // Step 1: Sign in anonymously
-  const { data: authData, error: authError } = await supabaseClient.auth.signInAnonymously();
-  console.log("Anon sign-in result:", { authData, authError });
-  if (authError) {
-    setSetupStatus("Error signing in: " + authError.message);
-    return;
-  }
-
-  // Step 1b: Verify the session is fully attached before continuing
-  let session = null;
-  for (let i = 0; i < 10; i++) {
-    const { data: sessionData } = await supabaseClient.auth.getSession();
-    if (sessionData && sessionData.session && sessionData.session.access_token) {
-      session = sessionData.session;
-      break;
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+      storageKey: 'pp_supa_auth'
     }
-    await new Promise(r => setTimeout(r, 200));
-  }
-  console.log("Session ready:", session);
-  if (!session) {
-    setSetupStatus("Could not establish a session. Please try again.");
-    return;
-  }
-
- // Step 2: Create family + parent profile in one safe function call
-const familyCode = generateFamilyCode();
-const familyName = "My Family";
-const { data: rpcData, error: rpcError } = await supabaseClient
-  .rpc("create_family_for_current_user", {
-    p_family_name: familyName,
-    p_family_code: familyCode,
-    p_display_name: "Parent"
   });
+  window.ppSupabase = sb;
 
-console.log("Create family result:", { rpcData, rpcError });
-if (rpcError) {
-  setSetupStatus("Error creating family: " + rpcError.message);
-  return;
-}
+  // ---------- localStorage keys ----------
+  const LS_FAMILY_ID = 'pp_family_id';
+  const LS_ROLE      = 'pp_role';           // 'parent' | 'child'
+  const LS_CODE      = 'pp_family_code';    // remembered for parent display
 
-  setSetupStatus("✅ Family created! Your family code is: " + familyCode);
-  alert("Your family code is:\n\n" + familyCode + "\n\nShare this with your child so they can join.");
-});
-
-// Child: Join a Family
-document.getElementById("joinFamilyBtn").addEventListener("click", async () => {
-  const code = prompt("Enter your family code:");
-  if (!code) return;
-
-  setSetupStatus("Joining family...");
-
-  // Step 1: Sign in anonymously
-  const { data: authData, error: authError } = await supabaseClient.auth.signInAnonymously();
-  if (authError) {
-    setSetupStatus("Error signing in: " + authError.message);
-    return;
+  // ---------- module state ----------
+  let familyId = localStorage.getItem(LS_FAMILY_ID) || null;
+  let role     = localStorage.getItem(LS_ROLE)      || null;
+  let familyCode = localStorage.getItem(LS_CODE)    || null;
+  let authUserId = null;
+  let realtimeChannel = null;
+  // Track local_ids we just wrote so realtime echoes don't trigger redundant re-renders
+  const recentlyPushed = new Set();
+  function markPushed(localId){
+    recentlyPushed.add(localId);
+    setTimeout(()=>recentlyPushed.delete(localId), 2500);
   }
 
-  // Step 1b: Wait for session to be fully ready
-  let session = null;
-  for (let i = 0; i < 10; i++) {
-    const { data: sessionData } = await supabaseClient.auth.getSession();
-    if (sessionData?.session?.access_token) {
-      session = sessionData.session;
-      break;
+  // ---------- tiny helpers ----------
+  function setStatus(msg, isError){
+    const el = document.getElementById('familySetupStatus');
+    if (el){ el.textContent = msg || ''; el.style.color = isError ? '#FECACA' : ''; }
+  }
+  function showSyncChip(text){
+    const chip = document.getElementById('ppSyncChip');
+    if (!chip) return;
+    if (text) chip.textContent = text;
+    chip.style.display = 'block';
+    clearTimeout(chip._t);
+    chip._t = setTimeout(()=>{ chip.style.display = 'none'; }, 1400);
+  }
+  function safeRerender(){
+    try {
+      // Re-run renders for whichever view is active. Each function defensively
+      // checks DOM state before doing anything.
+      if (typeof updateChoresBadge === 'function') updateChoresBadge();
+      const homeView = document.getElementById('homeView');
+      if (homeView && homeView.classList.contains('active') && typeof renderHome === 'function') renderHome();
+      const choresView = document.getElementById('choresView');
+      if (choresView && choresView.classList.contains('active') && typeof renderChoresView === 'function') renderChoresView();
+      const settingsView = document.getElementById('parentSettingsView') || document.getElementById('settingsView');
+      if (settingsView && settingsView.classList.contains('active') && typeof renderParentSettings === 'function') renderParentSettings();
+    } catch(e){ console.warn('[PuzzlePig sync] re-render error', e); }
+  }
+
+  // 6-char code: A-Z + 2-9, excluding ambiguous I, O, 0, 1
+  function genFamilyCode(){
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let out = '';
+    for (let i=0;i<6;i++) out += alphabet[Math.floor(Math.random()*alphabet.length)];
+    return out;
+  }
+
+  // ---------- chore <-> row mappers ----------
+  function choreToRow(c){
+    return {
+      local_id: c.id,
+      family_id: familyId,
+      assigned_to: JSON.stringify(c.assignedTo || []),
+      name: c.name || '',
+      amount: Number(c.amount) || 0,
+      recurring: c.recurring || 'daily',
+      chore_days: JSON.stringify(c.choreDays || []),
+      icon: c.icon || ''
+    };
+  }
+  function rowToChore(r){
+    let assignedTo = [];
+    let choreDays  = [];
+    try { assignedTo = typeof r.assigned_to === 'string' ? JSON.parse(r.assigned_to||'[]') : (r.assigned_to||[]); } catch(_){}
+    try { choreDays  = typeof r.chore_days  === 'string' ? JSON.parse(r.chore_days ||'[]') : (r.chore_days ||[]); } catch(_){}
+    return {
+      id: r.local_id,
+      assignedTo: assignedTo,
+      name: r.name || '',
+      amount: Number(r.amount) || 0,
+      recurring: r.recurring || 'daily',
+      choreDays: choreDays,
+      icon: r.icon || '',
+      createdAt: r.created_at || new Date().toISOString()
+    };
+  }
+  function logToRow(cl){
+    return {
+      local_id: cl.id,
+      family_id: familyId,
+      user_local_id: cl.userId || '',
+      chore_local_id: cl.choreId || '',
+      chore_name: cl._choreName || (window.chores && (chores.find(c=>c.id===cl.choreId)||{}).name) || '',
+      amount: Number(cl._amount || (window.chores && (chores.find(c=>c.id===cl.choreId)||{}).amount) || 0),
+      status: cl.status || 'pending',
+      log_date: cl.date || (new Date().toISOString().split('T')[0]),
+      approved_at: cl.approvedAt || null
+    };
+  }
+  function rowToLog(r){
+    return {
+      id: r.local_id,
+      userId: r.user_local_id,
+      choreId: r.chore_local_id,
+      status: r.status,
+      date: r.log_date,
+      approvedAt: r.approved_at,
+      createdAt: r.created_at || new Date().toISOString(),
+      _choreName: r.chore_name,
+      _amount: Number(r.amount) || 0
+    };
+  }
+
+  // ---------- push helpers ----------
+  async function pushChore(c){
+    if (!familyId || !c || !c.id) return;
+    markPushed(c.id);
+    try {
+      showSyncChip('Syncing…');
+      const { error } = await sb.from('chores').upsert(choreToRow(c), { onConflict: 'local_id' });
+      if (error) console.warn('[PuzzlePig sync] push chore error', error);
+    } catch(e){ console.warn('[PuzzlePig sync] push chore exception', e); }
+  }
+  async function pushChoreLog(cl){
+    if (!familyId || !cl || !cl.id) return;
+    markPushed(cl.id);
+    try {
+      showSyncChip('Syncing…');
+      const { error } = await sb.from('chore_logs').upsert(logToRow(cl), { onConflict: 'local_id' });
+      if (error) console.warn('[PuzzlePig sync] push log error', error);
+    } catch(e){ console.warn('[PuzzlePig sync] push log exception', e); }
+  }
+  async function deleteChoreRemote(localId){
+    if (!familyId || !localId) return;
+    try {
+      const { error } = await sb.from('chores').delete().eq('family_id', familyId).eq('local_id', localId);
+      if (error) console.warn('[PuzzlePig sync] delete chore error', error);
+    } catch(e){ console.warn('[PuzzlePig sync] delete chore exception', e); }
+  }
+
+  // ---------- wrap existing local writers so EVERY write also mirrors to Supabase ----------
+  function wrapLocalWriters(){
+    if (typeof dbPutChore === 'function' && !dbPutChore.__ppWrapped){
+      const orig = dbPutChore;
+      window.dbPutChore = async function(c){
+        const r = await orig(c);
+        pushChore(c);
+        return r;
+      };
+      window.dbPutChore.__ppWrapped = true;
     }
-    await new Promise(r => setTimeout(r, 200));
-  }
-  if (!session) {
-    setSetupStatus("Could not establish a session. Please try again.");
-    return;
+    if (typeof dbPutChoreLog === 'function' && !dbPutChoreLog.__ppWrapped){
+      const orig = dbPutChoreLog;
+      window.dbPutChoreLog = async function(cl){
+        const r = await orig(cl);
+        pushChoreLog(cl);
+        return r;
+      };
+      window.dbPutChoreLog.__ppWrapped = true;
+    }
+    if (typeof dbDeleteChore === 'function' && !dbDeleteChore.__ppWrapped){
+      const orig = dbDeleteChore;
+      window.dbDeleteChore = async function(id){
+        const r = await orig(id);
+        deleteChoreRemote(id);
+        return r;
+      };
+      window.dbDeleteChore.__ppWrapped = true;
+    }
   }
 
-  // Step 2: Join the family via RPC function
-  const { data: rpcData, error: rpcError } = await supabaseClient
-    .rpc("join_family_for_current_user", {
-      p_family_code: code.trim(),
-      p_display_name: "Child"
+  // ---------- initial pull + merge ----------
+  async function pullAndMerge(){
+    if (!familyId) return;
+    try {
+      const [choresRes, logsRes] = await Promise.all([
+        sb.from('chores').select('*').eq('family_id', familyId),
+        sb.from('chore_logs').select('*').eq('family_id', familyId)
+      ]);
+      if (choresRes.error) console.warn('[PuzzlePig sync] pull chores error', choresRes.error);
+      if (logsRes.error)   console.warn('[PuzzlePig sync] pull logs error', logsRes.error);
+
+      const remoteChores = (choresRes.data || []).map(rowToChore);
+      const remoteLogs   = (logsRes.data   || []).map(rowToLog);
+
+      if (typeof _memChores === 'undefined' || typeof _memChoreLogs === 'undefined') return;
+
+      // Merge chores
+      for (const rc of remoteChores){
+        const i = _memChores.findIndex(x => x.id === rc.id);
+        if (i >= 0) _memChores[i] = Object.assign({}, _memChores[i], rc);
+        else _memChores.push(rc);
+      }
+      // Merge logs
+      for (const rl of remoteLogs){
+        const i = _memChoreLogs.findIndex(x => x.id === rl.id);
+        if (i >= 0) _memChoreLogs[i] = Object.assign({}, _memChoreLogs[i], rl);
+        else _memChoreLogs.push(rl);
+      }
+
+      // Refresh visible-to-current-user views' working arrays
+      if (typeof currentUserId !== 'undefined' && currentUserId){
+        if (typeof chores !== 'undefined' && Array.isArray(chores)){
+          window.chores = _memChores
+            .filter(c => Array.isArray(c.assignedTo) && c.assignedTo.includes(currentUserId))
+            .map(c => JSON.parse(JSON.stringify(c)));
+        }
+        if (typeof choreLogs !== 'undefined' && Array.isArray(choreLogs)){
+          window.choreLogs = _memChoreLogs
+            .filter(l => l.userId === currentUserId)
+            .map(l => JSON.parse(JSON.stringify(l)));
+        }
+      }
+      safeRerender();
+    } catch(e){
+      console.warn('[PuzzlePig sync] pullAndMerge exception', e);
+    }
+  }
+
+  // ---------- realtime ----------
+  function subscribeRealtime(){
+    if (!familyId) return;
+    if (realtimeChannel){
+      try { sb.removeChannel(realtimeChannel); } catch(_){}
+      realtimeChannel = null;
+    }
+    realtimeChannel = sb.channel('pp_family_' + familyId)
+      .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'chores', filter: 'family_id=eq.' + familyId },
+          (payload) => handleChoreChange(payload))
+      .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'chore_logs', filter: 'family_id=eq.' + familyId },
+          (payload) => handleChoreLogChange(payload))
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') console.log('[PuzzlePig sync] realtime subscribed');
+      });
+  }
+
+  function handleChoreChange(payload){
+    if (typeof _memChores === 'undefined') return;
+    if (payload.eventType === 'DELETE'){
+      const old = payload.old || {};
+      if (!old.local_id) return;
+      _memChores = _memChores.filter(c => c.id !== old.local_id);
+      if (typeof chores !== 'undefined') window.chores = chores.filter(c => c.id !== old.local_id);
+    } else {
+      const r = payload.new; if (!r || !r.local_id) return;
+      const c = rowToChore(r);
+      const i = _memChores.findIndex(x => x.id === c.id);
+      if (i >= 0) _memChores[i] = c; else _memChores.push(c);
+      // Update visible list
+      if (typeof currentUserId !== 'undefined' && typeof chores !== 'undefined'){
+        const visible = Array.isArray(c.assignedTo) && c.assignedTo.includes(currentUserId);
+        const j = chores.findIndex(x => x.id === c.id);
+        if (visible){ if (j >= 0) chores[j] = JSON.parse(JSON.stringify(c)); else chores.push(JSON.parse(JSON.stringify(c))); }
+        else if (j >= 0) chores.splice(j,1);
+      }
+    }
+    safeRerender();
+  }
+
+  function handleChoreLogChange(payload){
+    if (typeof _memChoreLogs === 'undefined') return;
+    if (payload.eventType === 'DELETE'){
+      const old = payload.old || {};
+      if (!old.local_id) return;
+      _memChoreLogs = _memChoreLogs.filter(l => l.id !== old.local_id);
+      if (typeof choreLogs !== 'undefined') window.choreLogs = choreLogs.filter(l => l.id !== old.local_id);
+    } else {
+      const r = payload.new; if (!r || !r.local_id) return;
+      const cl = rowToLog(r);
+      const wasNew = !_memChoreLogs.some(x => x.id === cl.id);
+      const i = _memChoreLogs.findIndex(x => x.id === cl.id);
+      if (i >= 0) _memChoreLogs[i] = cl; else _memChoreLogs.push(cl);
+      // Sync into visible array
+      if (typeof currentUserId !== 'undefined' && typeof choreLogs !== 'undefined' && cl.userId === currentUserId){
+        const j = choreLogs.findIndex(x => x.id === cl.id);
+        if (j >= 0) choreLogs[j] = JSON.parse(JSON.stringify(cl)); else choreLogs.push(JSON.parse(JSON.stringify(cl)));
+      }
+      // Parent: surface a toast for incoming pending logs from kid
+      if (role === 'parent' && cl.status === 'pending' && wasNew && !recentlyPushed.has(cl.id)){
+        showParentToast(cl);
+      }
+    }
+    safeRerender();
+  }
+
+  // ---------- parent toast ----------
+  function showParentToast(cl){
+    const toast = document.getElementById('ppParentToast');
+    const body  = document.getElementById('ppParentToastBody');
+    if (!toast || !body) return;
+    const choreName = cl._choreName || ((typeof _memChores !== 'undefined' && (_memChores.find(c=>c.id===cl.choreId)||{}).name) || 'a chore');
+    const amt = cl._amount || ((typeof _memChores !== 'undefined' && (_memChores.find(c=>c.id===cl.choreId)||{}).amount) || 0);
+    body.innerHTML = '<strong>' + escapeHTML(choreName) + '</strong> &middot; $' + (Number(amt).toFixed(2)) + '<br><span style="opacity:.7;">Tap Approve or Deny.</span>';
+    toast.style.display = 'block';
+    // Wire buttons (replace handlers each time)
+    const approveBtn = document.getElementById('ppParentToastApprove');
+    const denyBtn    = document.getElementById('ppParentToastDeny');
+    const closeBtn   = document.getElementById('ppParentToastClose');
+    const hide = () => { toast.style.display = 'none'; };
+    approveBtn.onclick = async () => {
+      hide();
+      cl.status = 'approved';
+      cl.approvedAt = new Date().toISOString();
+      const i = _memChoreLogs.findIndex(x => x.id === cl.id);
+      if (i >= 0) _memChoreLogs[i] = cl;
+      if (typeof dbPutChoreLog === 'function') await dbPutChoreLog(cl);
+      safeRerender();
+    };
+    denyBtn.onclick = async () => {
+      hide();
+      cl.status = 'denied';
+      const i = _memChoreLogs.findIndex(x => x.id === cl.id);
+      if (i >= 0) _memChoreLogs[i] = cl;
+      if (typeof dbPutChoreLog === 'function') await dbPutChoreLog(cl);
+      safeRerender();
+    };
+    closeBtn.onclick = hide;
+  }
+  function escapeHTML(s){ const d=document.createElement('div'); d.textContent = (s==null?'':String(s)); return d.innerHTML; }
+
+  // ---------- auth + setup overlay ----------
+  async function ensureAnonAuth(){
+    const { data: sessData } = await sb.auth.getSession();
+    if (sessData && sessData.session && sessData.session.access_token){
+      authUserId = sessData.session.user.id;
+      return true;
+    }
+    const { data: authData, error } = await sb.auth.signInAnonymously();
+    if (error){
+      console.error('[PuzzlePig sync] anon sign-in error', error);
+      setStatus('Sign-in error: ' + (error.message || error), true);
+      return false;
+    }
+    // Wait briefly for the session to be fully attached
+    for (let i=0; i<15; i++){
+      const { data: s } = await sb.auth.getSession();
+      if (s && s.session && s.session.access_token){
+        authUserId = s.session.user.id;
+        return true;
+      }
+      await new Promise(r => setTimeout(r, 150));
+    }
+    authUserId = (authData && authData.user && authData.user.id) || null;
+    return !!authUserId;
+  }
+
+  function showSetupOverlay(){
+    const el = document.getElementById('familySetupScreen');
+    if (el) el.style.display = 'flex';
+  }
+  function hideSetupOverlay(){
+    const el = document.getElementById('familySetupScreen');
+    if (el) el.style.display = 'none';
+  }
+  function showView(name){
+    document.getElementById('familySetupChoice').style.display      = (name === 'choice') ? '' : 'none';
+    document.getElementById('familySetupParentCode').style.display  = (name === 'parent') ? '' : 'none';
+    document.getElementById('familySetupChildEntry').style.display  = (name === 'child')  ? '' : 'none';
+  }
+
+  function wireSetupUI(){
+    const startBtn = document.getElementById('startFamilyBtn');
+    const joinBtn  = document.getElementById('joinFamilyBtn');
+    const doneBtn  = document.getElementById('familySetupDoneBtn');
+    const codeIn   = document.getElementById('familyCodeInput');
+    const joinSub  = document.getElementById('familyJoinSubmitBtn');
+    const backBtn  = document.getElementById('familyJoinBackBtn');
+
+    if (startBtn) startBtn.onclick = async () => {
+      setStatus('Creating your family…');
+      const ok = await ensureAnonAuth(); if (!ok) return;
+      const code = genFamilyCode();
+      const { data, error } = await sb.rpc('create_family_for_current_user', {
+        p_family_name: 'My Family',
+        p_family_code: code,
+        p_display_name: 'Parent'
+      });
+      if (error){
+        console.error('[PuzzlePig sync] create family error', error);
+        setStatus('Could not create family: ' + (error.message || ''), true);
+        return;
+      }
+      // Resolve family_id from RPC return (it may be a row, an object, or just an id)
+      let famId = null;
+      if (data && typeof data === 'object'){
+        famId = data.family_id || data.id || (Array.isArray(data) && data[0] && (data[0].family_id || data[0].id));
+      } else if (typeof data === 'string'){ famId = data; }
+      if (!famId){
+        // Fallback: look up by code
+        const { data: famRows } = await sb.from('families').select('id').eq('family_code', code).limit(1);
+        if (famRows && famRows[0]) famId = famRows[0].id;
+      }
+      if (!famId){
+        setStatus('Family created, but could not read its ID. Please refresh.', true);
+        return;
+      }
+      familyId = famId; role = 'parent'; familyCode = code;
+      localStorage.setItem(LS_FAMILY_ID, familyId);
+      localStorage.setItem(LS_ROLE, role);
+      localStorage.setItem(LS_CODE, code);
+
+      document.getElementById('familyCodeDisplay').textContent = code;
+      document.getElementById('familySetupHeadline').textContent = "You're set up. Share this code with your kid.";
+      showView('parent');
+      setStatus('');
+    };
+
+    if (joinBtn) joinBtn.onclick = () => {
+      document.getElementById('familySetupHeadline').textContent = "Enter the code your parent gave you.";
+      showView('child');
+      setStatus('');
+      setTimeout(()=>{ const i=document.getElementById('familyCodeInput'); if (i) i.focus(); }, 60);
+    };
+
+    if (backBtn) backBtn.onclick = () => {
+      document.getElementById('familySetupHeadline').textContent = "Set up your family to sync chores between devices.";
+      showView('choice');
+      setStatus('');
+    };
+
+    if (codeIn) codeIn.addEventListener('input', () => {
+      codeIn.value = codeIn.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
     });
 
-  console.log("Join family result:", { rpcData, rpcError });
-  if (rpcError) {
-    setSetupStatus("❌ " + rpcError.message);
-    return;
-  }
-
-  setSetupStatus("✅ Joined family successfully!");
-  alert("You've joined the family! 🎉");
-});
-   // ===== Puzzle Pig: Parent Dashboard Logic =====
-
-async function showParentDashboard() {
-  const dashboard = document.getElementById("parentDashboard");
-  if (!dashboard) return;
-  dashboard.style.display = "block";
-
-  // Load existing chores
-  await loadParentChores();
-
-  // Wire up the Add Chore button
-  const addBtn = document.getElementById("addChoreBtn");
-  addBtn.addEventListener("click", async () => {
-    const titleInput = document.getElementById("newChoreTitle");
-    const status = document.getElementById("addChoreStatus");
-    const title = titleInput.value.trim();
-
-    if (!title) {
-      status.textContent = "Please type a chore name first.";
-      return;
-    }
-    status.textContent = "Adding...";
-
-    const profile = window.currentUserProfile;
-    const { error } = await supabaseClient
-      .from("chores")
-      .insert({
-        family_id: profile.family_id,
-        title: title,
-        status: "pending"
+    if (joinSub) joinSub.onclick = async () => {
+      const code = (codeIn.value || '').trim().toUpperCase();
+      if (code.length !== 6){ setStatus('Please enter a 6-character code.', true); return; }
+      setStatus('Joining family…');
+      const ok = await ensureAnonAuth(); if (!ok) return;
+      const { data, error } = await sb.rpc('join_family_for_current_user', {
+        p_family_code: code,
+        p_display_name: 'Kid'
       });
+      if (error){
+        console.error('[PuzzlePig sync] join error', error);
+        setStatus('Could not join: ' + (error.message || ''), true);
+        return;
+      }
+      let famId = null;
+      if (data && typeof data === 'object'){
+        famId = data.family_id || data.id || (Array.isArray(data) && data[0] && (data[0].family_id || data[0].id));
+      } else if (typeof data === 'string'){ famId = data; }
+      if (!famId){
+        const { data: famRows } = await sb.from('families').select('id').eq('family_code', code).limit(1);
+        if (famRows && famRows[0]) famId = famRows[0].id;
+      }
+      if (!famId){ setStatus('Joined, but could not read family ID. Please refresh.', true); return; }
+      familyId = famId; role = 'child'; familyCode = code;
+      localStorage.setItem(LS_FAMILY_ID, familyId);
+      localStorage.setItem(LS_ROLE, role);
+      localStorage.setItem(LS_CODE, code);
+      hideSetupOverlay();
+      await onFamilyReady();
+    };
 
-    if (error) {
-      console.log("Add chore error:", error);
-      status.textContent = "❌ " + error.message;
+    if (doneBtn) doneBtn.onclick = async () => {
+      hideSetupOverlay();
+      await onFamilyReady();
+    };
+  }
+
+  async function onFamilyReady(){
+    if (!familyId) return;
+    wrapLocalWriters();
+    // Wait until the local _mem arrays exist (init() finished basic setup)
+    for (let i=0; i<40 && (typeof _memChores === 'undefined'); i++){
+      await new Promise(r => setTimeout(r, 100));
+    }
+    await pullAndMerge();
+    subscribeRealtime();
+  }
+
+  // ---------- boot ----------
+  async function bootSync(){
+    wireSetupUI();
+    const ok = await ensureAnonAuth();
+    if (!ok){
+      // Allow user to retry via the overlay buttons
+      showSetupOverlay();
       return;
     }
-
-    status.textContent = "✅ Chore added!";
-    titleInput.value = "";
-    await loadParentChores();
-  });
-}
-
-async function loadParentChores() {
-  const list = document.getElementById("parentChoreList");
-  const profile = window.currentUserProfile;
-  if (!list || !profile) return;
-
-  const { data: chores, error } = await supabaseClient
-    .from("chores")
-    .select("*")
-    .eq("family_id", profile.family_id)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    list.innerHTML = `<p style="color:#c2185b;">Error loading chores: ${error.message}</p>`;
-    return;
+    if (familyId && role){
+      // Returning user
+      hideSetupOverlay();
+      await onFamilyReady();
+    } else {
+      showSetupOverlay();
+    }
   }
 
-  if (!chores || chores.length === 0) {
-    list.innerHTML = `<p style="color:#888;">No chores yet. Add your first one above!</p>`;
-    return;
+  // Run after DOM + main script have set up DOM elements
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', () => setTimeout(bootSync, 0));
+  } else {
+    setTimeout(bootSync, 0);
   }
 
-  list.innerHTML = chores.map(c => `
-    <div style="background: white; padding: 14px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center;">
-      <div>
-        <div style="font-weight: bold; color: #333;">${c.title}</div>
-        <div style="font-size: 12px; color: #888;">Status: ${c.status}</div>
-      </div>
-    </div>
-  `).join("");
-}
+  // Expose a tiny debug API
+  window.ppSync = {
+    forcePull: pullAndMerge,
+    state: () => ({ familyId, role, familyCode, authUserId }),
+    reset: () => {
+      localStorage.removeItem(LS_FAMILY_ID);
+      localStorage.removeItem(LS_ROLE);
+      localStorage.removeItem(LS_CODE);
+      location.reload();
+    }
+  };
+})();
+// ===== END SUPABASE SYNC =====
 </script>
 </body>
 </html>
