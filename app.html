@@ -6843,7 +6843,27 @@ init();
         'currentUserId:', window.currentUserId,
         'users.length:', (window.users && window.users.length));
     } catch(_){}
+    // One-time backfill: credit any approved logs that haven't been credited yet
+    try { await backfillApprovedLogCredits(); } catch(e){ console.warn('[backfill] failed', e); }
   }
+
+  async function backfillApprovedLogCredits(){
+    if (role !== 'child') return;
+    if (typeof currentUserId === 'undefined' || !currentUserId) return;
+    if (typeof _memChoreLogs === 'undefined') return;
+    const approved = _memChoreLogs.filter(cl => cl && cl.status === 'approved' && cl.userId === currentUserId);
+    if (!approved.length) return;
+    console.log('[backfill] scanning', approved.length, 'approved logs for credit gaps');
+    let credited = 0;
+    for (const cl of approved){
+      const before = _getCreditedLogIds();
+      if (before.has(cl.id)) continue;
+      try { await creditKidJarFromApprovedLog(cl); credited++; }
+      catch(e){ console.warn('[backfill] credit failed for', cl.id, e); }
+    }
+    if (credited > 0) console.log('[backfill] credited', credited, 'previously-missed logs');
+  }
+  try { window.backfillApprovedLogCredits = backfillApprovedLogCredits; } catch(_){}
 
   async function initKidMode(){
     if (role !== 'child') return;
