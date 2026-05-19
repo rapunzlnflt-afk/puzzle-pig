@@ -2690,10 +2690,18 @@ async function init() {
   document.getElementById('goalDate').min = today;
   document.getElementById('bottomNav').style.display = 'none';
 
-  // Check if this is the first launch
-  const hasSeenGuide = await dbGetSetting('hasSeenGuide');
-  if (!hasSeenGuide) {
-    openGuide();
+  // Check if this is the first launch.
+  // Skip the parent-oriented welcome guide on kid devices entirely.
+  const ppRole = (typeof localStorage !== 'undefined') ? localStorage.getItem('pp_role') : null;
+  const isKidDevice = (ppRole === 'child');
+  if (isKidDevice){
+    // Mark guide as seen so it never opens on kid devices
+    try { await dbPutSetting('hasSeenGuide', true); } catch(_){}
+  } else {
+    const hasSeenGuide = await dbGetSetting('hasSeenGuide');
+    if (!hasSeenGuide) {
+      openGuide();
+    }
   }
 
   // If no PIN set yet and no users, start the setup flow
@@ -5590,6 +5598,24 @@ function openGuide() {
 async function closeGuide() {
   document.getElementById('guideOverlay').classList.remove('active');
   await dbPutSetting('hasSeenGuide', true);
+  // On kid devices, never leave the user on a blank screen. Route them back
+  // to either their locked kid's app or the 'Who are you?' picker.
+  try {
+    if (document.body.classList.contains('pp-kid-mode')){
+      const lockedId = localStorage.getItem('pp_kid_user_id');
+      if (lockedId && typeof selectUser === 'function'){
+        // If already inside the app, currentUserBar will be visible; otherwise re-enter
+        if (document.getElementById('app').style.display === 'none'){
+          await selectUser(lockedId);
+        }
+      } else {
+        // Show the kid picker
+        const pick = document.getElementById('kidPickScreen');
+        if (pick) pick.style.display = 'flex';
+        if (typeof window.__ppRenderKidPickGrid === 'function') window.__ppRenderKidPickGrid();
+      }
+    }
+  } catch(e){ console.warn('[PuzzlePig] closeGuide kid routing failed', e); }
 }
 
 // ---- Contextual Help System ----
