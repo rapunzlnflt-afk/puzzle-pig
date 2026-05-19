@@ -6563,6 +6563,11 @@ init();
       if (typeof _memUsers !== 'undefined' && Array.isArray(_memUsers)) break;
       await new Promise(r => setTimeout(r, 100));
     }
+    // Safety net: if local users are still empty, force another pull
+    if (typeof _memUsers !== 'undefined' && _memUsers.length === 0){
+      console.log('[PuzzlePig kid] _memUsers empty after wait — forcing another pull');
+      try { await pullAndMerge(); } catch(_){}
+    }
     // If this phone is already locked to a kid, try to auto-route
     if (kidLockedUserId){
       const u = lookupKid(kidLockedUserId);
