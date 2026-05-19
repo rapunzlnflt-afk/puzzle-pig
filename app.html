@@ -1443,6 +1443,13 @@ a { color: inherit; text-decoration: none; }
   body.pp-parent-mode .switch-user-btn { display:none !important; }
   /* Parent never sees the avatar picker — they have their own settings view */
   body.pp-parent-mode #userSelectScreen { display:none !important; }
+  body.pp-parent-mode #mainHeader { display:none !important; }
+  body.pp-parent-mode #bottomNav { display:none !important; }
+  body.pp-parent-mode #currentUserBar { display:none !important; }
+  /* On parent device, kill the extra padding-bottom reserved for bottom nav */
+  body.pp-parent-mode #app { padding-top: 0 !important; padding-bottom: var(--space-4) !important; }
+  /* Hide all views except parentSettingsView on parent device */
+  body.pp-parent-mode .view:not(#parentSettingsView) { display:none !important; }
   /* Remove bottom-nav padding from the app on kid devices so content isn't shifted up */
   body.pp-kid-mode #app { padding-bottom: 0 !important; }
 </style>
