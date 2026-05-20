@@ -736,10 +736,11 @@ a { color: inherit; text-decoration: none; }
 .parent-card + .parent-card { margin-top: var(--space-3); }
 
 /* ===== v=32 PARENT REDESIGN ===== */
-.pp32-page { padding: var(--space-3); max-width: 1280px; margin: 0 auto; }
+.pp32-page { padding: var(--space-3); max-width: 1100px; margin: 0 auto; }
+@media (min-width: 720px) { .pp32-page { padding: var(--space-4) var(--space-5); } }
 .pp32-pagehead { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin-bottom: var(--space-4); }
 .pp32-pagehead h2 { margin:0; font-size:1.25rem; }
-.pp32-section-label { font-size:0.72rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; display:flex; align-items:center; justify-content:space-between; margin: var(--space-4) 0 var(--space-2); }
+.pp32-section-label { font-size:0.72rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; display:flex; align-items:center; justify-content:space-between; margin: var(--space-3) 0 var(--space-2); }
 .pp32-section-label a { font-size:0.78rem; color: var(--purple-600, #6D28D9); text-decoration:none; font-weight:600; cursor:pointer; }
 .pp32-children-grid { display:grid; grid-template-columns: 1fr; gap: var(--space-3); }
 @media (min-width: 720px) { .pp32-children-grid { grid-template-columns: 1fr 1fr; } }
@@ -770,13 +771,14 @@ a { color: inherit; text-decoration: none; }
 .pp32-menu-pop button:hover { background: var(--silver-100, #F3F4F6); }
 .pp32-menu-pop button.danger { color: #DC2626; }
 .pp32-chores-box { background: var(--surface); border:1px solid var(--border); border-radius: 14px; overflow:hidden; box-shadow: var(--shadow-sm); }
-.pp32-chore-row { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--border); }
+.pp32-chore-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid var(--border); }
 .pp32-chore-row:last-of-type { border-bottom: none; }
-.pp32-chore-main { flex:1; min-width:0; }
+.pp32-chore-main { flex:1; min-width:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .pp32-chore-name { font-weight:600; font-size:0.92rem; }
-.pp32-chore-meta { font-size:0.74rem; color:var(--text-muted); margin-top:2px; }
-.pp32-chore-pay { font-weight:700; font-size:0.88rem; color: var(--text); white-space:nowrap; }
-.pp32-mini-avatars { display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-top:6px; }
+.pp32-chore-meta { font-size:0.74rem; color:var(--text-muted); }
+.pp32-chore-pay { font-weight:700; font-size:0.88rem; color: var(--text); white-space:nowrap; min-width:48px; text-align:right; }
+.pp32-mini-avatars { display:flex; align-items:center; flex-wrap:wrap; gap:3px; }
+@media (max-width: 719px) { .pp32-chore-main { flex-direction:column; align-items:flex-start; gap:4px; } }
 .pp32-mini-avatar { width:22px; height:22px; border-radius:50%; color:#fff; font-size:0.65rem; font-weight:700; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; user-select:none; border:1.5px solid transparent; transition: opacity 0.15s; }
 .pp32-mini-avatar.off { opacity: 0.32; background: var(--silver-300, #d1d5db) !important; }
 .pp32-icon-btn { background:none; border:none; padding:6px; color:var(--text-muted); cursor:pointer; border-radius:6px; flex-shrink:0; }
@@ -790,8 +792,8 @@ a { color: inherit; text-decoration: none; }
 .pp32-pin-text { flex:1; }
 .pp32-pin-title { font-weight:600; font-size:0.9rem; }
 .pp32-pin-sub { font-size:0.75rem; color:var(--text-muted); margin-top:1px; }
-/* On desktop, expand all kid cards by default */
-@media (min-width: 720px) { .pp32-kid .pp32-kid-body { display:block; } .pp32-kid-chevron { display:none; } }
+/* On desktop: expand kid cards only when there's something to show (pending) */
+@media (min-width: 720px) { .pp32-kid.has-pending .pp32-kid-body { display:block; } .pp32-kid-chevron { display:none; } .pp32-kid-head { padding: 10px 12px; } }
 /* ===== END v=32 ===== */
 .parent-chore-item {
   display: flex; align-items: center; gap: var(--space-3);
@@ -3885,8 +3887,9 @@ async function renderParentSettings() {
       ? `<span class="pp32-pill-pending">${userPending.length} pending</span>`
       : '';
 
+    const hasPending = userPending.length > 0;
     return `
-      <div class="pp32-kid" id="kid_${u.id}">
+      <div class="pp32-kid ${hasPending ? 'has-pending' : ''}" id="kid_${u.id}">
         <div class="pp32-kid-head" onclick="pp32ToggleKid('${u.id}')">
           <div class="pp32-kid-avatar" style="background:${color};">${esc(u.name.charAt(0).toUpperCase())}</div>
           <div class="pp32-kid-main">
@@ -3930,8 +3933,10 @@ async function renderParentSettings() {
       return `
         <div class="pp32-chore-row">
           <div class="pp32-chore-main">
-            <div class="pp32-chore-name">${esc(c.name)}</div>
-            <div class="pp32-chore-meta">${scheduleText}</div>
+            <div style="flex:1;min-width:140px;">
+              <div class="pp32-chore-name">${esc(c.name)}</div>
+              <div class="pp32-chore-meta">${scheduleText}</div>
+            </div>
             <div class="pp32-mini-avatars">${miniAvatars}</div>
           </div>
           <div class="pp32-chore-pay">$${fmtNum(c.amount)}</div>
