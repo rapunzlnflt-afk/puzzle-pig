@@ -4927,16 +4927,23 @@ async function saveJarAdd(jarId) {
   const note = document.getElementById('jarAddNoteInput').value.trim() || 'Manual deposit';
   jar.balance = Math.round(((jar.balance || 0) + amt) * 100) / 100;
   await dbPutJar(jar);
+  const today = new Date().toISOString().split('T')[0];
   const tx = {
     id: 'tx_' + Date.now(),
     jarId, userId: currentUserId, amount: amt,
     type: 'manual', note,
-    date: new Date().toISOString().split('T')[0],
+    date: today,
     createdAt: new Date().toISOString(),
   };
   await dbPutJarTx(tx);
   jarTxs.push(tx);
+  // v=37: if this is the SAVE jar, credit active goal(s) so the progress bar moves
+  if (jar.type === 'save') {
+    try { await creditGoalsWithOverflow(amt, today, note); } catch(e) { console.warn('[PuzzlePig] creditGoalsWithOverflow err', e); }
+  }
   renderJarDetail();
+  try { if (typeof renderHome === 'function') renderHome(); } catch(_){}
+  try { if (typeof renderPuzzle === 'function') renderPuzzle(); } catch(_){}
 }
 
 async function jarWithdraw(jarId) {
@@ -4966,16 +4973,47 @@ async function saveJarWithdraw(jarId) {
   if (!amt || amt <= 0 || amt > (jar.balance || 0)) return;
   jar.balance = Math.round(((jar.balance || 0) - amt) * 100) / 100;
   await dbPutJar(jar);
+  const today = new Date().toISOString().split('T')[0];
+  const withdrawNote = document.getElementById('jarWithdrawNoteInput').value.trim() || 'Withdrawal';
   const tx = {
     id: 'tx_' + Date.now(),
     jarId, userId: currentUserId, amount: -amt,
-    type: 'manual', note: document.getElementById('jarWithdrawNoteInput').value.trim() || 'Withdrawal',
-    date: new Date().toISOString().split('T')[0],
+    type: 'manual', note: withdrawNote,
+    date: today,
     createdAt: new Date().toISOString(),
   };
   await dbPutJarTx(tx);
   jarTxs.push(tx);
+  // v=37: if this is the SAVE jar, debit goal history (most recently funded first) so progress bar moves down
+  if (jar.type === 'save') {
+    try { await debitGoalsFromSaveJar(amt, today, withdrawNote); } catch(e) { console.warn('[PuzzlePig] debitGoalsFromSaveJar err', e); }
+  }
   renderJarDetail();
+  try { if (typeof renderHome === 'function') renderHome(); } catch(_){}
+  try { if (typeof renderPuzzle === 'function') renderPuzzle(); } catch(_){}
+}
+
+// v=37: pull money back out of goal history (newest contributions first) when withdrawing from Save jar
+async function debitGoalsFromSaveJar(amount, date, note) {
+  let remaining = Math.round(amount * 100) / 100;
+  if (remaining <= 0) return;
+  // Walk all goals, collect history entries with positive amount, sorted newest first
+  const entries = [];
+  for (const g of goals) {
+    if (!Array.isArray(g.history)) continue;
+    g.history.forEach((h, idx) => {
+      if ((Number(h.amount)||0) > 0) entries.push({ goal: g, idx, amount: Number(h.amount), date: h.date || '' });
+    });
+  }
+  entries.sort((a,b) => (b.date || '').localeCompare(a.date || ''));
+  for (const e of entries) {
+    if (remaining <= 0) break;
+    const take = Math.min(remaining, e.amount);
+    // Record a negative entry rather than mutating original (keeps audit trail)
+    e.goal.history.push({ amount: -take, date, note: note + ' (withdraw)' });
+    await dbPut(e.goal);
+    remaining = Math.round((remaining - take) * 100) / 100;
+  }
 }
 
 // ---- Auto-create default jars for new users ----
