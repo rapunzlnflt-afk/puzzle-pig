@@ -283,7 +283,8 @@ a { color: inherit; text-decoration: none; }
 
 /* ============ PUZZLE VIEW ============ */
 .puzzle-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); }
-.puzzle-back { display: flex; align-items: center; gap: var(--space-1); font-size: 0.9rem; color: var(--text-muted); font-weight: 500; }
+.puzzle-back { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; color: var(--purple-600, #7C3AED); font-weight: 600; padding: 6px 12px; border: 1.5px solid var(--purple-200, #DDD6FE); background: var(--purple-50, #F5F3FF); border-radius: 999px; transition: background 0.15s, border-color 0.15s; }
+.puzzle-back:hover { background: var(--purple-100, #EDE9FE); border-color: var(--purple-500, #7C3AED); }
 .puzzle-back svg { width: 20px; height: 20px; }
 .puzzle-menu-btn {
   display: flex; align-items: center; justify-content: center; width: 36px; height: 36px;
@@ -2611,10 +2612,12 @@ async function selectUser(id) {
   choreLogs = allChoreLogs.filter(cl => cl.userId === id);
 
   // Sync Save jar balance with goal history
+  // v=38: SAVE jar = goal total. Always reconcile both directions at load (goal is source of truth).
   const saveJar = jars.find(j => j.type === 'save');
   if (saveJar) {
-    const totalGoalSaved = goals.reduce((sum, g) => sum + g.history.reduce((s, h) => s + h.amount, 0), 0);
-    if (saveJar.balance < totalGoalSaved) {
+    const totalGoalSaved = Math.round(goals.reduce((sum, g) => sum + (Array.isArray(g.history) ? g.history.reduce((s, h) => s + (Number(h.amount)||0), 0) : 0), 0) * 100) / 100;
+    if (Math.abs((saveJar.balance||0) - totalGoalSaved) > 0.005) {
+      console.log('[PuzzlePig] Save jar reconciled:', saveJar.balance, '->', totalGoalSaved);
       saveJar.balance = totalGoalSaved;
       await dbPutJar(saveJar);
     }
@@ -4757,12 +4760,14 @@ function renderJarDetail() {
         const amtStr = (tx.amount >= 0 ? '+' : '-') + '$' + fmtNum(Math.abs(tx.amount));
         const typeLabel = tx.type === 'chore' ? 'Chore' : tx.type === 'transfer' ? 'Transfer' : 'Manual';
         return `
-          <div class="jar-tx-item">
-            <div>
+          <div class="jar-tx-item" style="display:flex;align-items:center;gap:8px;">
+            <div style="flex:1;min-width:0;">
               <div>${esc(tx.note || typeLabel)}</div>
               <div class="jar-tx-note">${dateStr} &middot; ${typeLabel}</div>
             </div>
             <span class="${amtClass}">${amtStr}</span>
+            <button class="btn-icon" title="Edit" onclick="editJarTx('${tx.id}')" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;padding:4px;" aria-label="Edit transaction"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+            <button class="btn-icon" title="Delete" onclick="deleteJarTx('${tx.id}')" style="background:transparent;border:none;color:#DC2626;cursor:pointer;padding:4px;" aria-label="Delete transaction"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
           </div>
         `;
       }).join('');
@@ -4817,6 +4822,72 @@ function renderJarDetail() {
 function backFromJarDetail() {
   currentJarId = null;
   showView('homeView');
+}
+
+// v=38: edit a jar transaction (amount + note). Recomputes jar balance from transactions.
+function editJarTx(txId) {
+  const tx = jarTxs.find(t => t.id === txId);
+  if (!tx) return;
+  const isPositive = (tx.amount || 0) >= 0;
+  const absAmt = Math.abs(tx.amount || 0);
+  const area = document.getElementById('jarEditArea');
+  if (!area) return;
+  area.innerHTML = `
+    <div style="margin-bottom:var(--space-2);">
+      <label class="form-label">Edit transaction amount (${isPositive ? 'deposit' : 'withdrawal'})</label>
+      <input type="number" id="editTxAmount" class="form-input" value="${absAmt}" min="0.01" step="0.01" inputmode="decimal">
+    </div>
+    <div style="margin-bottom:var(--space-2);">
+      <label class="form-label">Note</label>
+      <input type="text" id="editTxNote" class="form-input" value="${esc(tx.note || '')}">
+    </div>
+    <div style="display:flex;gap:var(--space-2);">
+      <button class="btn-primary" style="flex:1;" onclick="saveJarTxEdit('${txId}', ${isPositive})">Save</button>
+      <button class="btn-outline btn-sm" onclick="document.getElementById('jarEditArea').innerHTML=''">Cancel</button>
+    </div>`;
+  setTimeout(()=>{ const el = document.getElementById('editTxAmount'); if (el) el.focus(); }, 50);
+}
+
+async function saveJarTxEdit(txId, isPositive) {
+  const tx = jarTxs.find(t => t.id === txId);
+  if (!tx) return;
+  const newAmtAbs = Math.round((parseFloat(document.getElementById('editTxAmount').value) || 0) * 100) / 100;
+  if (newAmtAbs <= 0) { alert('Enter an amount greater than 0.'); return; }
+  const newNote = document.getElementById('editTxNote').value.trim() || tx.note || 'Manual';
+  tx.amount = isPositive ? newAmtAbs : -newAmtAbs;
+  tx.note = newNote;
+  await dbPutJarTx(tx);
+  await recomputeJarFromTx(tx.jarId);
+  document.getElementById('jarEditArea').innerHTML = '';
+  renderJarDetail();
+  try { if (typeof renderHome === 'function') renderHome(); } catch(_){}
+}
+
+async function deleteJarTx(txId) {
+  const tx = jarTxs.find(t => t.id === txId);
+  if (!tx) return;
+  if (!confirm('Delete this transaction? The jar balance will be recalculated.')) return;
+  await dbDeleteJarTx(tx.id);
+  jarTxs = jarTxs.filter(t => t.id !== txId);
+  await recomputeJarFromTx(tx.jarId);
+  renderJarDetail();
+  try { if (typeof renderHome === 'function') renderHome(); } catch(_){}
+}
+
+// v=38: Self-healing — recompute jar.balance from sum of its transactions.
+// For SAVE jar, also reconcile via syncSaveJarBalance afterward.
+async function recomputeJarFromTx(jarId) {
+  const jar = jars.find(j => j.id === jarId);
+  if (!jar) return;
+  const txSum = jarTxs
+    .filter(t => t.jarId === jarId)
+    .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  jar.balance = Math.round(txSum * 100) / 100;
+  await dbPutJar(jar);
+  if (jar.type === 'save') {
+    // Goal totals are the real source of truth for save jar — re-sync after
+    try { await syncSaveJarBalance(); } catch(_){}
+  }
 }
 
 // ===== JAR TRANSFER (child manually moves money between own jars) =====
@@ -4925,9 +4996,16 @@ async function saveJarAdd(jarId) {
   const amt = parseFloat(document.getElementById('jarAddAmountInput').value);
   if (!amt || amt <= 0) return;
   const note = document.getElementById('jarAddNoteInput').value.trim() || 'Manual deposit';
-  jar.balance = Math.round(((jar.balance || 0) + amt) * 100) / 100;
-  await dbPutJar(jar);
   const today = new Date().toISOString().split('T')[0];
+  // v=38: For the SAVE jar, the goal is the source of truth.
+  // Credit goals first, then sync jar balance from goal totals (no double counting).
+  if (jar.type === 'save') {
+    try { await creditGoalsWithOverflow(amt, today, note); } catch(e) { console.warn('[PuzzlePig] creditGoalsWithOverflow err', e); }
+    await syncSaveJarBalance();
+  } else {
+    jar.balance = Math.round(((jar.balance || 0) + amt) * 100) / 100;
+    await dbPutJar(jar);
+  }
   const tx = {
     id: 'tx_' + Date.now(),
     jarId, userId: currentUserId, amount: amt,
@@ -4937,10 +5015,6 @@ async function saveJarAdd(jarId) {
   };
   await dbPutJarTx(tx);
   jarTxs.push(tx);
-  // v=37: if this is the SAVE jar, credit active goal(s) so the progress bar moves
-  if (jar.type === 'save') {
-    try { await creditGoalsWithOverflow(amt, today, note); } catch(e) { console.warn('[PuzzlePig] creditGoalsWithOverflow err', e); }
-  }
   renderJarDetail();
   try { if (typeof renderHome === 'function') renderHome(); } catch(_){}
   try { if (typeof renderPuzzle === 'function') renderPuzzle(); } catch(_){}
@@ -4971,10 +5045,16 @@ async function saveJarWithdraw(jarId) {
   if (!jar) return;
   const amt = parseFloat(document.getElementById('jarWithdrawAmountInput').value);
   if (!amt || amt <= 0 || amt > (jar.balance || 0)) return;
-  jar.balance = Math.round(((jar.balance || 0) - amt) * 100) / 100;
-  await dbPutJar(jar);
   const today = new Date().toISOString().split('T')[0];
   const withdrawNote = document.getElementById('jarWithdrawNoteInput').value.trim() || 'Withdrawal';
+  // v=38: For the SAVE jar, debit goals then sync jar from goals (single source of truth)
+  if (jar.type === 'save') {
+    try { await debitGoalsFromSaveJar(amt, today, withdrawNote); } catch(e) { console.warn('[PuzzlePig] debitGoalsFromSaveJar err', e); }
+    await syncSaveJarBalance();
+  } else {
+    jar.balance = Math.round(((jar.balance || 0) - amt) * 100) / 100;
+    await dbPutJar(jar);
+  }
   const tx = {
     id: 'tx_' + Date.now(),
     jarId, userId: currentUserId, amount: -amt,
@@ -4984,10 +5064,6 @@ async function saveJarWithdraw(jarId) {
   };
   await dbPutJarTx(tx);
   jarTxs.push(tx);
-  // v=37: if this is the SAVE jar, debit goal history (most recently funded first) so progress bar moves down
-  if (jar.type === 'save') {
-    try { await debitGoalsFromSaveJar(amt, today, withdrawNote); } catch(e) { console.warn('[PuzzlePig] debitGoalsFromSaveJar err', e); }
-  }
   renderJarDetail();
   try { if (typeof renderHome === 'function') renderHome(); } catch(_){}
   try { if (typeof renderPuzzle === 'function') renderPuzzle(); } catch(_){}
