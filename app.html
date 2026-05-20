@@ -734,6 +734,65 @@ a { color: inherit; text-decoration: none; }
   box-shadow: var(--shadow-sm); border: 1px solid var(--border);
 }
 .parent-card + .parent-card { margin-top: var(--space-3); }
+
+/* ===== v=32 PARENT REDESIGN ===== */
+.pp32-page { padding: var(--space-3); max-width: 1280px; margin: 0 auto; }
+.pp32-pagehead { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin-bottom: var(--space-4); }
+.pp32-pagehead h2 { margin:0; font-size:1.25rem; }
+.pp32-section-label { font-size:0.72rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; display:flex; align-items:center; justify-content:space-between; margin: var(--space-4) 0 var(--space-2); }
+.pp32-section-label a { font-size:0.78rem; color: var(--purple-600, #6D28D9); text-decoration:none; font-weight:600; cursor:pointer; }
+.pp32-children-grid { display:grid; grid-template-columns: 1fr; gap: var(--space-3); }
+@media (min-width: 720px) { .pp32-children-grid { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1024px) { .pp32-children-grid { grid-template-columns: 1fr 1fr 1fr; } }
+.pp32-kid { background: var(--surface); border:1px solid var(--border); border-radius: 14px; overflow:visible; box-shadow: var(--shadow-sm); position:relative; }
+.pp32-kid-head { display:flex; align-items:center; gap:10px; padding:12px; cursor:pointer; }
+.pp32-kid-avatar { width:38px; height:38px; border-radius:50%; color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:0.95rem; }
+.pp32-kid-main { flex:1; min-width:0; }
+.pp32-kid-name { font-weight:700; font-size:0.95rem; line-height:1.2; }
+.pp32-kid-meta { display:flex; align-items:center; gap:6px; margin-top:3px; flex-wrap:wrap; }
+.pp32-pill-earned { font-size:0.72rem; font-weight:600; background:#DCFCE7; color:#15803D; padding:2px 8px; border-radius:10px; }
+.pp32-pill-pending { font-size:0.72rem; font-weight:700; background:#FEF3C7; color:#92400E; padding:2px 8px; border-radius:10px; }
+.pp32-kid-chevron { color: var(--text-muted); transition: transform 0.18s; flex-shrink:0; }
+.pp32-kid.expanded .pp32-kid-chevron { transform: rotate(90deg); }
+.pp32-kid-body { padding: 0 12px 12px; display:none; border-top: 1px solid var(--border); padding-top: 10px; }
+.pp32-kid.expanded .pp32-kid-body { display:block; }
+.pp32-pending-row { display:flex; align-items:center; gap:8px; padding:8px; background:#FFF8E1; border-left:3px solid #F59E0B; border-radius:6px; margin-bottom:6px; }
+.pp32-pending-row .name { flex:1; min-width:0; font-weight:600; font-size:0.85rem; }
+.pp32-pending-row .amt { font-size:0.72rem; color:var(--text-muted); }
+.pp32-pending-row .btn { font-size:0.75rem; padding:5px 10px; border:none; border-radius:6px; cursor:pointer; font-weight:600; }
+.pp32-btn-approve { background:#16A34A; color:#fff; }
+.pp32-btn-reject { background:#FEE2E2; color:#DC2626; }
+.pp32-menu-btn { background:none; border:none; padding:6px; border-radius:6px; color:var(--text-muted); cursor:pointer; flex-shrink:0; }
+.pp32-menu-btn:hover { background: var(--silver-100, #F3F4F6); }
+.pp32-menu-pop { position:absolute; top: 48px; right: 8px; background:#fff; border:1px solid var(--border); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.12); min-width:160px; padding:4px; z-index:50; display:none; }
+.pp32-menu-pop.open { display:block; }
+.pp32-menu-pop button { display:block; width:100%; text-align:left; background:none; border:none; padding:8px 12px; font-size:0.85rem; cursor:pointer; border-radius:6px; color: var(--text); }
+.pp32-menu-pop button:hover { background: var(--silver-100, #F3F4F6); }
+.pp32-menu-pop button.danger { color: #DC2626; }
+.pp32-chores-box { background: var(--surface); border:1px solid var(--border); border-radius: 14px; overflow:hidden; box-shadow: var(--shadow-sm); }
+.pp32-chore-row { display:flex; align-items:center; gap:10px; padding:12px; border-bottom:1px solid var(--border); }
+.pp32-chore-row:last-of-type { border-bottom: none; }
+.pp32-chore-main { flex:1; min-width:0; }
+.pp32-chore-name { font-weight:600; font-size:0.92rem; }
+.pp32-chore-meta { font-size:0.74rem; color:var(--text-muted); margin-top:2px; }
+.pp32-chore-pay { font-weight:700; font-size:0.88rem; color: var(--text); white-space:nowrap; }
+.pp32-mini-avatars { display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-top:6px; }
+.pp32-mini-avatar { width:22px; height:22px; border-radius:50%; color:#fff; font-size:0.65rem; font-weight:700; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; user-select:none; border:1.5px solid transparent; transition: opacity 0.15s; }
+.pp32-mini-avatar.off { opacity: 0.32; background: var(--silver-300, #d1d5db) !important; }
+.pp32-icon-btn { background:none; border:none; padding:6px; color:var(--text-muted); cursor:pointer; border-radius:6px; flex-shrink:0; }
+.pp32-icon-btn:hover { background: var(--silver-100, #F3F4F6); }
+.pp32-icon-btn.danger:hover { background: #FEE2E2; color: #DC2626; }
+.pp32-chore-footer { padding:10px 12px; display:flex; justify-content:space-between; align-items:center; background: var(--silver-50, #FAFAFA); font-size:0.78rem; color: var(--text-muted); }
+.pp32-chore-footer a { color: var(--purple-600, #6D28D9); font-weight:600; cursor:pointer; text-decoration:none; }
+.pp32-pin-row { display:flex; align-items:center; gap:10px; padding:14px; background:var(--surface); border:1px solid var(--border); border-radius:12px; margin-top:var(--space-3); cursor:pointer; }
+.pp32-pin-row:hover { background: var(--silver-50, #FAFAFA); }
+.pp32-pin-icon { width:36px; height:36px; border-radius:8px; background:var(--purple-100, #EDE9FE); color:var(--purple-600, #6D28D9); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.pp32-pin-text { flex:1; }
+.pp32-pin-title { font-weight:600; font-size:0.9rem; }
+.pp32-pin-sub { font-size:0.75rem; color:var(--text-muted); margin-top:1px; }
+/* On desktop, expand all kid cards by default */
+@media (min-width: 720px) { .pp32-kid .pp32-kid-body { display:block; } .pp32-kid-chevron { display:none; } }
+/* ===== END v=32 ===== */
 .parent-chore-item {
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-3) 0; border-bottom: 1px solid var(--border);
@@ -2047,10 +2106,9 @@ a { color: inherit; text-decoration: none; }
         <label class="day-chip"><input type="checkbox" value="6"><span>Sat</span></label>
       </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">Assign To</label>
-      <div id="choreUserCheckboxes" class="chore-user-checkboxes"></div>
-    </div>
+    <!-- Assign To removed in v=32: chores are universal at creation; assign per-child from the parent page chips -->
+    <div id="choreUserCheckboxes" class="chore-user-checkboxes" style="display:none;"></div>
+    <p id="choreAssignHint" style="font-size:0.78rem;color:var(--text-muted);margin:-4px 0 var(--space-3);">After you add this chore, tap the child names below it to assign.</p>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeAddChoreModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveChore()" id="saveChoreBtn">Add Chore</button>
@@ -3789,305 +3847,172 @@ function selectUserFromParent(userId) {
 async function renderParentSettings() {
   const view = document.getElementById('parentSettingsView');
 
-  // Ensure currentUserId is set for jar display — default to first user
   if (!currentUserId && users.length > 0) currentUserId = users[0].id;
-  // Load ALL chores and jars globally for parent view
   const allJarsGlobal = await dbGetAllJars();
-  jars = allJarsGlobal; // make global jars hold ALL jars so per-user filtering works below
+  jars = allJarsGlobal;
   const allChoresGlobal = await dbGetAllChores();
   allChoresGlobal.forEach(c => { if (!c.assignedTo) c.assignedTo = c.userId ? [c.userId] : []; });
   const allChoreLogsGlobal = await dbGetAllChoreLogs();
-  
-  // --- Build per-child cards (everything for one kid in one place) ---
   const pendingLogsAll = allChoreLogsGlobal.filter(cl => cl.status === 'pending');
+
+  const isParentDevice = (function(){
+    try { return localStorage.getItem('pp_role') === 'parent'; } catch(_) { return false; }
+  })();
+
+  // ----- Per-child compact cards -----
   const childCards = users.map((u, idx) => {
-    const c = getAvatarColor(idx);
+    const color = getAvatarColor(idx);
     const userPending = pendingLogsAll.filter(cl => cl.userId === u.id);
     const userApproved = allChoreLogsGlobal.filter(cl => cl.userId === u.id && cl.status === 'approved');
     const totalEarned = userApproved.reduce((sum, cl) => {
       const ch = allChoresGlobal.find(x => x.id === cl.choreId);
       return sum + (ch ? (Number(ch.amount)||0) : 0);
     }, 0);
-    const assignedChores = allChoresGlobal.filter(ch => Array.isArray(ch.assignedTo) && ch.assignedTo.includes(u.id));
 
-    // Pending list for this child
-    const pendingItems = userPending.map(cl => {
+    const pendingRows = userPending.map(cl => {
       const ch = allChoresGlobal.find(x => x.id === cl.choreId);
       return `
-        <div style="display:flex;align-items:center;gap:8px;padding:10px;background:#FFF8E1;border-left:3px solid #F59E0B;border-radius:6px;margin-bottom:6px;">
-          <div style="flex:1;min-width:0;">
-            <div style="font-weight:600;font-size:0.88rem;">${ch ? esc(ch.name) : 'Unknown chore'}</div>
-            <div style="font-size:0.72rem;color:var(--text-muted);">$${ch ? fmtNum(ch.amount) : '0'}</div>
-          </div>
-          <button class="parent-btn-approve" style="font-size:0.75rem;padding:5px 10px;" onclick="approveChoreFromParent('${cl.id}','')">Approve</button>
-          <button class="parent-btn-reject" style="font-size:0.75rem;padding:5px 10px;" onclick="rejectChoreFromParent('${cl.id}')">Reject</button>
+        <div class="pp32-pending-row">
+          <div class="name">${ch ? esc(ch.name) : 'Unknown chore'} <span class="amt">$${ch ? fmtNum(ch.amount) : '0'}</span></div>
+          <button class="btn pp32-btn-reject" onclick="event.stopPropagation();rejectChoreFromParent('${cl.id}')">Reject</button>
+          <button class="btn pp32-btn-approve" onclick="event.stopPropagation();approveChoreFromParent('${cl.id}','')">Approve</button>
         </div>`;
     }).join('');
 
-    // Assigned chores list for this child (read-only summary; full editing in Chores section)
-    const assignedItems = assignedChores.length === 0
-      ? '<p style="color:var(--text-faint);font-size:0.78rem;margin:6px 0 0;">No chores assigned. Assign in the Chores section below.</p>'
-      : assignedChores.map(ch => `<div style="font-size:0.8rem;padding:4px 0;color:var(--text-muted);">• ${esc(ch.name)} <span style="color:var(--text-faint);">($${fmtNum(ch.amount)})</span></div>`).join('');
-
-    const pendingBadge = userPending.length > 0
-      ? `<span style="background:#F59E0B;color:#fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:6px;">${userPending.length} pending</span>`
+    const safeName = esc(u.name).replace(/'/g,"\\'");
+    const pillEarned = `<span class="pp32-pill-earned">$${fmtNum(totalEarned)} earned</span>`;
+    const pillPending = userPending.length > 0
+      ? `<span class="pp32-pill-pending">${userPending.length} pending</span>`
       : '';
 
     return `
-      <div class="parent-section" style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:var(--space-4);margin-bottom:var(--space-4);background:var(--surface);">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:var(--space-3);flex-wrap:wrap;">
-          <div style="width:48px;height:48px;border-radius:50%;background:${c};color:#fff;font-size:1.3rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${esc(u.name.charAt(0).toUpperCase())}</div>
-          <div style="flex:1;min-width:120px;">
-            <div style="font-size:1.1rem;font-weight:700;display:flex;align-items:center;flex-wrap:wrap;">${esc(u.name)}${pendingBadge}</div>
-            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">${u.pin ? 'PIN set' : 'No PIN'}</div>
+      <div class="pp32-kid" id="kid_${u.id}">
+        <div class="pp32-kid-head" onclick="pp32ToggleKid('${u.id}')">
+          <div class="pp32-kid-avatar" style="background:${color};">${esc(u.name.charAt(0).toUpperCase())}</div>
+          <div class="pp32-kid-main">
+            <div class="pp32-kid-name">${esc(u.name)}</div>
+            <div class="pp32-kid-meta">${pillEarned}${pillPending}</div>
           </div>
-          <div style="text-align:right;">
-            <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Earned</div>
-            <div style="font-size:1.3rem;font-weight:700;color:var(--green-700,#15803D);">$${fmtNum(totalEarned)}</div>
-          </div>
+          <button class="pp32-menu-btn" onclick="event.stopPropagation();pp32ToggleMenu('${u.id}')" title="More">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+          </button>
+          <svg class="pp32-kid-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
         </div>
-
-        ${userPending.length > 0 ? `
-          <div style="margin-bottom:var(--space-3);">
-            <div style="font-size:0.75rem;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Waiting for approval</div>
-            ${pendingItems}
-          </div>` : ''}
-
-        <details style="margin-bottom:var(--space-3);">
-          <summary style="cursor:pointer;font-size:0.78rem;color:var(--text-muted);font-weight:600;padding:4px 0;">Assigned chores (${assignedChores.length})</summary>
-          <div style="padding:4px 0 0 var(--space-2);">${assignedItems}</div>
-        </details>
-
-        <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:var(--space-2);border-top:1px solid var(--border);">
-          <button class="btn btn-sm btn-outline" style="font-size:0.72rem;padding:5px 10px;" onclick="setKidPinFromParent('${u.id}')">${u.pin ? 'Change PIN' : 'Set PIN'}</button>
-          <button class="btn btn-sm btn-outline" style="font-size:0.72rem;padding:5px 10px;" onclick="unlinkKidDeviceFromParent('${u.id}','${esc(u.name).replace(/'/g,"\\'")}')">Unlink phone</button>
-          <button class="btn btn-sm btn-danger" style="font-size:0.72rem;padding:5px 10px;margin-left:auto;" onclick="removeUserFromParent('${u.id}','${esc(u.name).replace(/'/g,"\\'")}')">Remove</button>
+        <div class="pp32-menu-pop" id="menu_${u.id}">
+          <button onclick="event.stopPropagation();pp32CloseMenus();unlinkKidDeviceFromParent('${u.id}','${safeName}')">Unlink phone</button>
+          <button class="danger" onclick="event.stopPropagation();pp32CloseMenus();removeUserFromParent('${u.id}','${safeName}')">Remove child</button>
+        </div>
+        <div class="pp32-kid-body">
+          ${pendingRows || `<p style="font-size:0.8rem;color:var(--text-muted);margin:0;">No pending chores.</p>`}
         </div>
       </div>`;
   }).join('');
 
   const noChildrenHTML = users.length === 0
-    ? '<div class="parent-section" style="text-align:center;padding:var(--space-6) var(--space-4);background:var(--purple-50);border-radius:var(--radius-lg);"><p style="color:var(--text-muted);margin:0 0 var(--space-3);">No children added yet.</p><button class="btn btn-primary" onclick="addUserFromParent()">Add Your First Child</button></div>'
+    ? `<div class="pp32-kid" style="text-align:center;padding:var(--space-5);">
+         <p style="color:var(--text-muted);margin:0 0 var(--space-3);">No children added yet.</p>
+         <button class="btn btn-primary" onclick="addUserFromParent()">Add Your First Child</button>
+       </div>`
     : '';
 
-  // --- Pending Chores Section (DEPRECATED — moved into child cards) ---
-  const pendingLogs = pendingLogsAll;
-  let pendingHTML = '';
-  if (false && pendingLogs.length > 0) {
-    const pendingItems = pendingLogs.map(cl => {
-      const c = allChoresGlobal.find(ch => ch.id === cl.choreId);
-      const user = users.find(u => u.id === cl.userId);
-      const uJars = allJarsGlobal.filter(j => j.userId === cl.userId);
-      const jarOpts = uJars.map(j => `<option value="${j.id}"${j.type === 'save' ? ' selected' : ''}>${esc(j.name)}</option>`).join('');
-      return `
-        <div class="parent-pending-item" style="flex-wrap:wrap;">
-          <div class="parent-pending-info">
-            <div class="parent-pending-name">${c ? esc(c.name) : 'Unknown'}</div>
-            <div class="parent-pending-detail">${user ? esc(user.name) : ''} &middot; $${c ? fmtNum(c.amount) : '0'}</div>
-          </div>
-          <div class="parent-pending-actions">
-            ${uJars.length > 0 ? `<select id="jarPick_${cl.id}" style="font-size:0.75rem;padding:4px 6px;border-radius:var(--radius-md);border:1px solid var(--border);" title="Choose jar">${jarOpts}</select>` : `<input type="hidden" id="jarPick_${cl.id}" value="">`}
-            <button class="parent-btn-approve" onclick="approveChoreFromParent('${cl.id}', document.getElementById('jarPick_${cl.id}').value)">Approve</button>
-            <button class="parent-btn-reject" onclick="rejectChoreFromParent('${cl.id}')">Reject</button>
-          </div>
-        </div>`;
-    }).join('');
-    pendingHTML = `
-      <div class="parent-section">
-        <div class="parent-section-header">
-          <div class="parent-section-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          </div>
-          <h3>Pending Approval (${pendingLogs.length})</h3>
-        </div>
-        ${pendingItems}
-      </div>` + ''; // owedHTML inserted just below pendingHTML in final composition
-  }
-  
-  // --- Children Money Owed (from synced approved chore_logs — Path B: parent has no jar data) ---
-  let owedHTML = '';
-  if (users.length > 0){
-    const owedRows = users.map(u => {
-      const userLogs = allChoreLogsGlobal.filter(cl => cl.userId === u.id && cl.status === 'approved');
-      const total = userLogs.reduce((sum, cl) => {
-        const ch = allChoresGlobal.find(x => x.id === cl.choreId);
-        return sum + (ch ? (Number(ch.amount)||0) : 0);
-      }, 0);
-      const count = userLogs.length;
-      return `
-        <div class="parent-pending-item">
-          <div class="parent-pending-info">
-            <div class="parent-pending-name">${esc(u.name)}</div>
-            <div class="parent-pending-detail">${count} approved chore${count===1?'':'s'}</div>
-          </div>
-          <div style="font-weight:700;color:var(--green-700,#15803D);font-size:1.05rem;">$${fmtNum(total)}</div>
-        </div>`;
-    }).join('');
-    owedHTML = `
-      <div class="parent-section">
-        <div class="parent-section-header">
-          <div class="parent-section-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 6v2m0 8v2"/></svg>
-          </div>
-          <h3>Earnings to Date</h3>
-        </div>
-        ${owedRows || '<p style="color:var(--text-muted);font-size:0.9rem;padding:var(--space-3) 0;">No approved chores yet.</p>'}
-        <p style="font-size:0.75rem;color:var(--text-faint);margin:var(--space-2) 0 0;">Total earned from all approved chores. Your child may have already moved some between jars or spent it.</p>
-      </div>`;
-  }
-
-  // --- Chores Section (single unified list: name, amount, schedule, per-child assignment, actions) ---
-  let choreItems;
-  const hasChores = allChoresGlobal.length > 0;
-  if (hasChores) {
-    choreItems = allChoresGlobal.map(c => {
+  // ----- Compact chores list with mini-avatar assignment chips -----
+  let choreRows;
+  if (allChoresGlobal.length > 0) {
+    choreRows = allChoresGlobal.map(c => {
       const scheduleText = c.recurring === 'specific' ? formatChoreDays(c.choreDays) : c.recurring;
-      const assignChips = users.length === 0
-        ? '<span style="font-size:0.72rem;color:var(--text-faint);">No children to assign</span>'
+      const miniAvatars = users.length === 0
+        ? '<span style="font-size:0.72rem;color:var(--text-faint);">Add a child to assign</span>'
         : users.map((u, idx) => {
-            const color = getAvatarColor(idx);
+            const col = getAvatarColor(idx);
             const isAssigned = c.assignedTo.includes(u.id);
-            return `<label style="display:inline-flex;align-items:center;gap:5px;font-size:0.75rem;padding:4px 9px;border-radius:14px;cursor:pointer;background:${isAssigned ? color : 'var(--gray-100,#F1F1F1)'};color:${isAssigned ? '#fff' : 'var(--text-muted)'};border:1px solid ${isAssigned ? color : 'var(--border)'};margin:2px;user-select:none;">
-              <input type="checkbox" ${isAssigned ? 'checked' : ''} onchange="toggleChoreUser('${c.id}','${u.id}',this.checked)" style="display:none;">
-              ${esc(u.name)}
-            </label>`;
+            return `<span class="pp32-mini-avatar ${isAssigned ? '' : 'off'}" style="background:${col};" onclick="toggleChoreUser('${c.id}','${u.id}',${!isAssigned})" title="${esc(u.name)}">${esc(u.name.charAt(0).toUpperCase())}</span>`;
           }).join('');
       return `
-        <div style="padding:var(--space-3);border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:var(--space-2);background:var(--surface);">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-            <div style="flex:1;min-width:120px;">
-              <div style="font-weight:600;font-size:0.95rem;">${esc(c.name)}</div>
-              <div style="font-size:0.75rem;color:var(--text-muted);">$${fmtNum(c.amount)} &middot; ${scheduleText}</div>
-            </div>
-            <div style="display:flex;gap:6px;">
-              <button class="btn btn-sm btn-outline" style="font-size:0.72rem;padding:5px 10px;" onclick="openEditChoreModal('${c.id}')">Edit</button>
-              <button class="btn btn-sm btn-danger" style="font-size:0.72rem;padding:5px 10px;" onclick="deleteChoreFromParent('${c.id}')">Delete</button>
-            </div>
+        <div class="pp32-chore-row">
+          <div class="pp32-chore-main">
+            <div class="pp32-chore-name">${esc(c.name)}</div>
+            <div class="pp32-chore-meta">${scheduleText}</div>
+            <div class="pp32-mini-avatars">${miniAvatars}</div>
           </div>
-          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding-top:6px;border-top:1px dashed var(--border);">
-            <span style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-right:4px;">Assigned to:</span>
-            ${assignChips}
-          </div>
-        </div>`;
-    }).join('');
-  } else {
-    choreItems = '<p style="color:var(--text-muted);font-size:0.9rem;padding:var(--space-3) 0;">No chores set up yet.</p>';
-  }
-  
-  // --- Jars Section (per-user) ---
-  let jarsContent = '';
-  if (users.length === 0) {
-    jarsContent = '<p style="color:var(--text-muted);font-size:0.9rem;">Add users first to set up jars.</p>';
-  } else {
-    const jarCards = users.map((u, idx) => {
-      const uJars = jars.filter(j => j.userId === u.id);
-      const c = getAvatarColor(idx);
-      if (uJars.length === 0) {
-        return `
-          <div style="margin-bottom:var(--space-3);padding:var(--space-3);background:var(--purple-50);border-radius:var(--radius-lg);">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--space-2);">
-              <div style="width:24px;height:24px;border-radius:50%;background:${c};color:#fff;font-size:0.7rem;font-weight:700;display:flex;align-items:center;justify-content:center;">${esc(u.name.charAt(0).toUpperCase())}</div>
-              <span style="font-weight:600;font-size:0.9rem;">${esc(u.name)}</span>
-            </div>
-            <p style="color:var(--text-muted);font-size:0.8rem;margin:0;">No jars yet</p>
-            <button class="btn btn-primary btn-sm" style="margin-top:var(--space-2);font-size:0.8rem;" onclick="setupJarsForUser('${u.id}')">Set Up Jars</button>
-          </div>`;
-      }
-      return `
-        <div style="margin-bottom:var(--space-3);padding:var(--space-3);background:var(--purple-50);border-radius:var(--radius-lg);">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--space-2);">
-            <div style="width:24px;height:24px;border-radius:50%;background:${c};color:#fff;font-size:0.7rem;font-weight:700;display:flex;align-items:center;justify-content:center;">${esc(u.name.charAt(0).toUpperCase())}</div>
-            <span style="font-weight:600;font-size:0.9rem;flex:1;">${esc(u.name)}</span>
-            <button class="btn btn-sm btn-outline" style="font-size:0.7rem;padding:2px 8px;" onclick="setupJarsForUser('${u.id}')">Edit Jars</button>
-          </div>
-          <div style="display:flex;gap:var(--space-2);">
-            ${uJars.map(j => `
-              <div style="flex:1;text-align:center;padding:var(--space-2);background:var(--surface);border-radius:var(--radius-md);cursor:pointer;" onclick="parentJarAction('${j.id}','${u.id}')">
-                <div style="font-weight:600;font-size:0.75rem;color:var(--purple-700);text-transform:uppercase;">${esc(j.name || j.type)}</div>
-                <div style="font-family:var(--font-display);font-weight:700;font-size:0.95rem;">$${fmtNum(j.balance || 0)}</div>
-                <div style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;">tap to add/withdraw</div>
-              </div>`).join('')}
-          </div>
-        </div>`;
-    }).join('');
-    jarsContent = jarCards;
-  }
-  
-  // --- Users Section ---
-  const userItems = users.map((u, idx) => {
-    const c = getAvatarColor(idx);
-    return `
-      <div class="parent-user-item">
-        <div class="parent-user-avatar" style="background:${c};">${esc(u.name.charAt(0).toUpperCase())}</div>
-        <div class="parent-user-name">${esc(u.name)}</div>
-        ${users.length > 1 ? `<button class="btn btn-sm btn-danger" onclick="removeUserFromParent('${u.id}')">Remove</button>` : ''}
-      </div>`;
-  }).join('');
-  
-  // --- Avatar row for user selection ---
-  const avatarRow = users.length > 0 ? users.map((u, idx) => {
-    const c = getAvatarColor(idx);
-    return `
-      <button class="parent-avatar-pick" onclick="selectUserFromParent('${u.id}')" title="Go to ${esc(u.name)}'s page" style="background:${c};">
-        ${esc(u.name.charAt(0).toUpperCase())}
-      </button>`;
-  }).join('') : '';
-
-  // On a dedicated parent device (role === 'parent'), the back arrow and the
-  // "Go to page" kid-avatar row don't make sense — the parent never acts as a
-  // child and has no parent-style user-select screen to go back to.
-  const isParentDevice = (function(){
-    try { return localStorage.getItem('pp_role') === 'parent'; } catch(_) { return false; }
-  })();
-  view.innerHTML = `
-    <div class="parent-page-header">
-      ${isParentDevice ? '' : `<button onclick="closeParentSettings()" style="background:none;border:none;cursor:pointer;padding:4px;margin-right:8px;color:var(--purple-600);">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
-      </button>`}
-      <h2 style="flex:1;">Parent Settings</h2>
-    </div>
-    ${(!isParentDevice && users.length > 0) ? `
-    <div class="parent-avatar-row">
-      <span style="font-size:0.8rem;color:var(--text-muted);font-weight:600;">Go to page:</span>
-      <div class="parent-avatar-picks">${avatarRow}</div>
-    </div>` : ''}
-    
-    ${noChildrenHTML}
-    ${childCards}
-
-    ${users.length > 0 ? `<div style="margin-bottom:var(--space-5);text-align:center;">
-      <button class="btn btn-outline btn-sm" onclick="addUserFromParent()" style="font-size:0.82rem;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Another Child
-      </button>
-    </div>` : ''}
-
-    <div class="parent-section">
-      <div class="parent-section-header">
-        <div class="parent-section-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12l2 2 4-4"/></svg>
-        </div>
-        <h3>Chores</h3>
-      </div>
-      <div class="parent-card">
-        ${choreItems}
-        <div style="margin-top:var(--space-3);">
-          <button class="btn btn-primary btn-block btn-sm" onclick="openAddChoreFromParent()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add New Chore
+          <div class="pp32-chore-pay">$${fmtNum(c.amount)}</div>
+          <button class="pp32-icon-btn" onclick="openEditChoreModal('${c.id}')" title="Edit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
           </button>
+          <button class="pp32-icon-btn danger" onclick="deleteChoreFromParent('${c.id}')" title="Delete">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          </button>
+        </div>`;
+    }).join('');
+  } else {
+    choreRows = '<p style="color:var(--text-muted);font-size:0.88rem;padding:var(--space-4);text-align:center;margin:0;">No chores yet. Add one to get started.</p>';
+  }
+
+  view.innerHTML = `
+    <div class="pp32-page">
+      <div class="pp32-pagehead">
+        ${isParentDevice ? '<div></div>' : `<button onclick="closeParentSettings()" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--purple-600);">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>`}
+        <h2>Parent Settings</h2>
+        <div style="width:30px;"></div>
+      </div>
+
+      <div class="pp32-section-label">
+        <span>Children${users.length > 0 ? ' ('+users.length+')' : ''}</span>
+        ${users.length > 0 ? '<a onclick="addUserFromParent()">+ Add child</a>' : ''}
+      </div>
+      <div class="pp32-children-grid">
+        ${noChildrenHTML}${childCards}
+      </div>
+
+      <div class="pp32-section-label">
+        <span>Chores${allChoresGlobal.length > 0 ? ' ('+allChoresGlobal.length+')' : ''}</span>
+        <a onclick="openAddChoreFromParent()">+ Add chore</a>
+      </div>
+      <div class="pp32-chores-box">
+        ${choreRows}
+        <div class="pp32-chore-footer">
+          <span>${allChoresGlobal.length} chore${allChoresGlobal.length===1?'':'s'} \u00b7 Tap an initial to assign</span>
+          <a onclick="openAddChoreFromParent()">+ Add chore</a>
         </div>
       </div>
-    </div>
 
-    <div class="parent-section" style="margin-top:var(--space-6);">
-      <button class="btn btn-outline btn-block btn-sm" onclick="changePin()" style="color:var(--text-muted);">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        Change Parent PIN
-      </button>
+      <div class="pp32-pin-row" onclick="changePin()">
+        <div class="pp32-pin-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <div class="pp32-pin-text">
+          <div class="pp32-pin-title">Parent PIN</div>
+          <div class="pp32-pin-sub">Used to enter Parent Settings</div>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--text-muted);"><path d="M9 18l6-6-6-6"/></svg>
+      </div>
     </div>
   `;
 }
+
+// v=32: kid card expand/collapse + 3-dot menu
+function pp32ToggleKid(id){
+  const el = document.getElementById('kid_'+id);
+  if (!el) return;
+  el.classList.toggle('expanded');
+  pp32CloseMenus();
+}
+function pp32ToggleMenu(id){
+  const menu = document.getElementById('menu_'+id);
+  if (!menu) return;
+  const wasOpen = menu.classList.contains('open');
+  pp32CloseMenus();
+  if (!wasOpen) menu.classList.add('open');
+}
+function pp32CloseMenus(){
+  document.querySelectorAll('.pp32-menu-pop.open').forEach(m => m.classList.remove('open'));
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.pp32-menu-pop') && !e.target.closest('.pp32-menu-btn')) {
+    pp32CloseMenus();
+  }
+});
 
 // ===== Parent-side: kid device management =====
 async function unlinkKidDeviceFromParent(kidId, kidName){
@@ -5450,13 +5375,14 @@ function closeMgmt() {
   renderChoresView();
 }
 
+// v=32: hidden checkboxes still hold the assignment list (for edit case),
+// but UI is removed. New chores default to [] (universal/unassigned).
 function populateChoreUserCheckboxes(selectedIds) {
   const container = document.getElementById('choreUserCheckboxes');
   if (!container) return;
-  container.innerHTML = users.map(u => {
-    const checked = selectedIds.includes(u.id) ? 'checked' : '';
-    return `<label><input type="checkbox" value="${u.id}" ${checked}> ${esc(u.name)}</label>`;
-  }).join('');
+  container.innerHTML = (selectedIds || []).map(id =>
+    `<input type="checkbox" value="${id}" checked style="display:none;">`
+  ).join('');
 }
 
 function getCheckedChoreUsers() {
@@ -5476,7 +5402,9 @@ function openAddChoreModal() {
   });
   document.getElementById('choreDaysPicker').style.display = 'none';
   document.querySelectorAll('#choreDaysPicker input').forEach(cb => cb.checked = false);
-  populateChoreUserCheckboxes(users.map(u => u.id)); // default: all users
+  populateChoreUserCheckboxes([]); // v=32: new chores start unassigned (universal)
+  const hint = document.getElementById('choreAssignHint');
+  if (hint) hint.style.display = '';
   document.getElementById('addChoreModal').classList.add('active');
 }
 
@@ -5503,6 +5431,9 @@ async function openEditChoreModal(id) {
     cb.checked = choreDays.includes(parseInt(cb.value));
   });
   populateChoreUserCheckboxes(c.assignedTo);
+  // v=32: hint is for new chores only — hide when editing
+  const hint2 = document.getElementById('choreAssignHint');
+  if (hint2) hint2.style.display = 'none';
   // If parent settings is open, use parent flow (no extra PIN needed)
   if (document.getElementById('parentSettingsView').style.display !== 'none') {
     window._choreFromParent = true;
