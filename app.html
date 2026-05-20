@@ -3550,21 +3550,29 @@ async function submitSavingsEntry() {
 async function creditGoalsForUser(amount, date, note, userGoals) {
   let remaining = Math.round(amount * 100) / 100;
   if (remaining <= 0) return;
+  // Defensive: ensure every goal has a history array (older goals were saved without one)
+  for (const g of userGoals) { if (!Array.isArray(g.history)) g.history = []; }
   const activeGoals = userGoals.filter(g => {
-    const saved = g.history.reduce((s, h) => s + h.amount, 0);
-    return saved < g.goalAmount;
+    const saved = g.history.reduce((s, h) => s + (Number(h.amount)||0), 0);
+    return saved < (Number(g.goalAmount)||0);
   });
-  if (activeGoals.length === 0) return;
+  if (activeGoals.length === 0) { console.log('[PuzzlePig goal] no active goals to credit'); return; }
   for (const goal of activeGoals) {
     if (remaining <= 0) break;
-    const saved = goal.history.reduce((s, h) => s + h.amount, 0);
-    const needed = Math.round((goal.goalAmount - saved) * 100) / 100;
+    const saved = goal.history.reduce((s, h) => s + (Number(h.amount)||0), 0);
+    const needed = Math.round(((Number(goal.goalAmount)||0) - saved) * 100) / 100;
     if (needed <= 0) continue;
     const credit = Math.min(remaining, needed);
     goal.history.push({ amount: credit, date, note });
     await dbPut(goal);
+    console.log('[PuzzlePig goal] credited', goal.name, '+$' + credit, 'new total:', saved + credit);
     remaining = Math.round((remaining - credit) * 100) / 100;
   }
+  // Refresh UI if rendered
+  try {
+    if (typeof renderHome === 'function') renderHome();
+    if (typeof renderPuzzle === 'function') renderPuzzle();
+  } catch(_){}
 }
 
 // Credit goals with overflow: fills the target goal up to its cap, rolls surplus to the next active goal
