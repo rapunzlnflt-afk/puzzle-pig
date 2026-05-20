@@ -793,7 +793,7 @@ a { color: inherit; text-decoration: none; }
 .pp32-pin-title { font-weight:600; font-size:0.9rem; }
 .pp32-pin-sub { font-size:0.75rem; color:var(--text-muted); margin-top:1px; }
 /* On desktop: child cards stay COLLAPSED; clicking opens a modal */
-@media (min-width: 720px) { .pp32-kid .pp32-kid-body { display:none; } .pp32-kid-chevron { display:none; } .pp32-kid-head { padding: 10px 12px; } }
+@media (min-width: 720px) { .pp32-kid .pp32-kid-body { display:none; } .pp32-kid-head { padding: 10px 12px; } .pp32-kid { cursor:pointer; transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s; } .pp32-kid:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(124,58,237,0.12); border-color: var(--purple-500, #7C3AED); } .pp32-kid::after { content: 'Tap to manage'; position:absolute; bottom:6px; left:0; right:0; text-align:center; font-size:0.7rem; color: var(--text-muted); letter-spacing:0.02em; pointer-events:none; opacity:0.75; } .pp32-kid-head { padding-bottom: 22px; } }
 .pp32-kid-head:hover { background: var(--silver-50, #FAFAFA); }
 /* Desktop chore column headers */
 .pp32-chore-headers { display:none; padding: 8px 12px; background: var(--silver-50, #FAFAFA); border-bottom: 1px solid var(--border); font-size: 0.68rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; gap: 10px; align-items:center; }
@@ -4083,8 +4083,8 @@ async function pp32OpenKidModal(id){
         const ch = allChoresGlobal.find(x => x.id === cl.choreId);
         return `<div class="pp32-pending-row">
           <div class="name">${ch ? esc(ch.name) : 'Unknown chore'} <span class="amt">$${ch ? fmtNum(ch.amount) : '0'}</span></div>
-          <button class="btn pp32-btn-reject" onclick="rejectChoreFromParent('${cl.id}');pp32CloseKidModal();">Reject</button>
-          <button class="btn pp32-btn-approve" onclick="approveChoreFromParent('${cl.id}','');pp32CloseKidModal();">Approve</button>
+          <button class="btn pp32-btn-reject" onclick="pp32HandleModalAction('reject','${cl.id}','${id}')">Reject</button>
+          <button class="btn pp32-btn-approve" onclick="pp32HandleModalAction('approve','${cl.id}','${id}')">Approve</button>
         </div>`;
       }).join('');
 
@@ -4117,10 +4117,6 @@ async function pp32OpenKidModal(id){
             ${assignedHTML}
           </div>
         </div>
-        <div class="pp32-modal-actions">
-          <button class="btn btn-outline" onclick="pp32CloseKidModal();unlinkKidDeviceFromParent('${u.id}','${safeName}')">Unlink phone</button>
-          <button class="btn btn-outline" style="color:#DC2626;border-color:#FECACA;" onclick="pp32CloseKidModal();removeUserFromParent('${u.id}','${safeName}')">Remove child</button>
-        </div>
       </div>
     </div>`;
   const existing = document.getElementById('pp32KidModal');
@@ -4130,6 +4126,16 @@ async function pp32OpenKidModal(id){
 function pp32CloseKidModal(){
   const m = document.getElementById('pp32KidModal');
   if (m) m.remove();
+}
+// v=35: keep modal open after approve/reject, re-render in place
+async function pp32HandleModalAction(action, logId, kidId){
+  try {
+    if (action === 'approve') { await approveChoreFromParent(logId, ''); }
+    else if (action === 'reject') { await rejectChoreFromParent(logId); }
+  } catch(e) { console.warn('[pp32] modal action err', e); }
+  // re-open modal with fresh data; if no more pending, leave it open showing empty state
+  pp32CloseKidModal();
+  await pp32OpenKidModal(kidId);
 }
 function pp32ToggleMenu(id){
   const menu = document.getElementById('menu_'+id);
