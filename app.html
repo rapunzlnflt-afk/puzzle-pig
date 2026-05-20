@@ -3988,7 +3988,41 @@ async function renderParentSettings() {
     
     ${pendingHTML}
     ${owedHTML}
-    
+
+    <div class="parent-section" data-section="children">
+      <div class="parent-section-header">
+        <div class="parent-section-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+        </div>
+        <h3>Children</h3>
+      </div>
+      <div class="parent-card">
+        ${users.length === 0 ? '<p style="color:var(--text-muted);font-size:0.85rem;padding:var(--space-2) 0;">No children added yet. Tap below to add your first child.</p>' : users.map((u, idx) => {
+          const c = getAvatarColor(idx);
+          return `
+            <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
+              <div style="width:38px;height:38px;border-radius:50%;background:${c};color:#fff;font-size:1rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${esc(u.name.charAt(0).toUpperCase())}</div>
+              <div style="flex:1;min-width:120px;">
+                <div style="font-size:0.95rem;font-weight:600;">${esc(u.name)}</div>
+                <div style="font-size:0.72rem;color:var(--text-muted);">${u.pin ? 'PIN set' : 'No PIN'}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button class="btn btn-sm btn-outline" style="font-size:0.72rem;padding:5px 10px;" onclick="setKidPinFromParent('${u.id}')">${u.pin ? 'Change PIN' : 'Set PIN'}</button>
+                <button class="btn btn-sm btn-outline" style="font-size:0.72rem;padding:5px 10px;" onclick="unlinkKidDeviceFromParent('${u.id}','${esc(u.name).replace(/'/g,"\\'")}')">Unlink phone</button>
+                <button class="btn btn-sm btn-danger" style="font-size:0.72rem;padding:5px 10px;" onclick="removeUserFromParent('${u.id}','${esc(u.name).replace(/'/g,"\\'")}')">Remove</button>
+              </div>
+            </div>`;
+        }).join('')}
+        <div style="margin-top:var(--space-3);">
+          <button class="btn btn-primary btn-block btn-sm" onclick="addUserFromParent()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Child
+          </button>
+        </div>
+        <p style="font-size:0.7rem;color:var(--text-faint);margin:var(--space-2) 0 0;line-height:1.4;">Unlink resets a child's phone so a different child (or a new device) can claim it.</p>
+      </div>
+    </div>
+
     <div class="parent-section">
       <div class="parent-section-header">
         <div class="parent-section-icon">
@@ -4006,68 +4040,11 @@ async function renderParentSettings() {
         </div>
       </div>
     </div>
-    
-    <div class="parent-section" data-section="jars">
-      <div class="parent-section-header">
-        <div class="parent-section-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2h8l1 4H7L8 2z"/><rect x="5" y="6" width="14" height="14" rx="2"/><path d="M9 11h6M9 15h4"/></svg>
-        </div>
-        <h3>Jars</h3>
-      </div>
-      <div class="parent-card">
-        ${jarsContent}
-      </div>
-    </div>
-    
-    <div class="parent-section" data-section="users">
-      <div class="parent-section-header">
-        <div class="parent-section-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-        </div>
-        <h3>Users</h3>
-      </div>
-      <div class="parent-card">
-        ${userItems}
-        <div style="margin-top:var(--space-3);">
-          <button class="btn btn-outline btn-block btn-sm" onclick="addUserFromParent()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add User
-          </button>
-        </div>
-      </div>
-    </div>
-    
-    <div class="parent-section" data-section="devices">
-      <div class="parent-section-header">
-        <div class="parent-section-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
-        </div>
-        <h3>Connected Devices</h3>
-      </div>
-      <div class="parent-card">
-        <p style="color:var(--text-muted);font-size:0.8rem;margin:0 0 var(--space-3) 0;line-height:1.4;">
-          Each kid's phone locks to one child. Tap Unlink to reset a phone so a different kid (or a new device) can claim it.
-        </p>
-        ${users.length === 0 ? '<p style="color:var(--text-muted);font-size:0.85rem;">Add a user first.</p>' : users.map((u, idx) => {
-          const c = getAvatarColor(idx);
-          return `
-            <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
-              <div style="width:34px;height:34px;border-radius:50%;background:${c};color:#fff;font-size:0.85rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${esc(u.name.charAt(0).toUpperCase())}</div>
-              <div style="flex:1;min-width:0;">
-                <div style="font-size:0.9rem;font-weight:600;">${esc(u.name)}</div>
-                <div style="font-size:0.72rem;color:var(--text-muted);">${u.pin ? 'PIN set' : 'No PIN'}</div>
-              </div>
-              <button class="btn btn-sm btn-outline" style="font-size:0.75rem;padding:6px 12px;" onclick="setKidPinFromParent('${u.id}')">${u.pin ? 'Change PIN' : 'Set PIN'}</button>
-              <button class="btn btn-sm btn-danger" style="font-size:0.75rem;padding:6px 12px;" onclick="unlinkKidDeviceFromParent('${u.id}','${esc(u.name).replace(/'/g,"\\'")}')">Unlink</button>
-            </div>`;
-        }).join('')}
-      </div>
-    </div>
 
     <div class="parent-section" style="margin-top:var(--space-6);">
       <button class="btn btn-outline btn-block btn-sm" onclick="changePin()" style="color:var(--text-muted);">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        Change PIN
+        Change Parent PIN
       </button>
     </div>
   `;
@@ -4719,7 +4696,7 @@ function renderJarDetail() {
         </button>
         <button class="btn-sm btn-outline" style="flex:1;color:var(--purple-600,#8E6BBF);" onclick="jarStartTransfer('${jar.id}')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;"><path d="M7 17l10-10M7 7h10v10"/></svg>
-          Move
+          Move to another jar
         </button>
       </div>
       <div id="jarEditArea"></div>
@@ -4796,10 +4773,15 @@ try { window.jarStartTransfer = jarStartTransfer; window.jarDoTransfer = jarDoTr
 async function jarEditName(jarId) {
   const jar = jars.find(j => j.id === jarId);
   if (!jar) return;
+  // Save jar is tied to the goal — warn the user before letting them rename
+  if (jar.type === 'save'){
+    const ok = confirm('Heads up: this is the Save jar. Any money in it goes toward your goal. Renaming it changes the label only — the goal connection stays the same.\n\nContinue?');
+    if (!ok) return;
+  }
   const area = document.getElementById('jarEditArea');
   area.innerHTML = `
-    <div style="display:flex;gap:var(--space-2);align-items:center;">
-      <input type="text" id="jarRenameInput" class="form-input" value="${esc(jar.name)}" style="flex:1;">
+    <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;">
+      <input type="text" id="jarRenameInput" class="form-input" value="${esc(jar.name)}" style="flex:1;min-width:140px;">
       <button class="btn-primary" style="padding:8px 16px;" onclick="saveJarRename('${jarId}')">Save</button>
       <button class="btn-outline btn-sm" onclick="document.getElementById('jarEditArea').innerHTML=''">Cancel</button>
     </div>`;
@@ -6566,6 +6548,8 @@ init();
     const amount = Number((chore && chore.amount) || cl._amount || 0);
     if (!amount || amount <= 0) return;
     if (typeof dbGetAllJars !== 'function' || typeof dbPutJar !== 'function') return;
+    // CRITICAL: mark credited BEFORE doing the work, so any reload/error can't double-credit
+    _markLogCredited(cl.id);
     const allJ = await dbGetAllJars();
     const userJars = allJ.filter(j => j.userId === currentUserId);
     if (!userJars.length) return;
@@ -6594,7 +6578,6 @@ init();
         if (k >= 0) jars[k] = JSON.parse(JSON.stringify(jar));
       }
     } catch(_){}
-    _markLogCredited(cl.id);
     console.log('[creditKidJar] credited $' + amount.toFixed(2) + ' to jar ' + jar.id + ' for log ' + cl.id);
     // Refresh visible jars, goals, and home view so kid sees new balance immediately
     try {
