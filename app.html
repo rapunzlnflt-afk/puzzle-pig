@@ -752,12 +752,12 @@ a { color: inherit; text-decoration: none; }
 .pp32-kid-name { font-weight:700; font-size:0.95rem; line-height:1.2; }
 .pp32-kid-meta { display:flex; align-items:center; gap:6px; margin-top:3px; flex-wrap:wrap; }
 .pp32-pill-earned { font-size:0.72rem; font-weight:600; background:#DCFCE7; color:#15803D; padding:2px 8px; border-radius:10px; }
-.pp32-pill-pending { font-size:0.72rem; font-weight:700; background:#FEF3C7; color:#92400E; padding:2px 8px; border-radius:10px; }
+.pp32-pill-pending { font-size:0.72rem; font-weight:700; background:#FED7AA; color:#C2410C; padding:2px 8px; border-radius:10px; }
 .pp32-kid-chevron { color: var(--text-muted); transition: transform 0.18s; flex-shrink:0; }
 .pp32-kid.expanded .pp32-kid-chevron { transform: rotate(90deg); }
 .pp32-kid-body { padding: 0 12px 12px; display:none; border-top: 1px solid var(--border); padding-top: 10px; }
 .pp32-kid.expanded .pp32-kid-body { display:block; }
-.pp32-pending-row { display:flex; align-items:center; gap:8px; padding:8px; background:#FFF8E1; border-left:3px solid #F59E0B; border-radius:6px; margin-bottom:6px; }
+.pp32-pending-row { display:flex; align-items:center; gap:8px; padding:8px 10px; background:#FAF7FE; border-left:3px solid var(--purple-500, #7C3AED); border-radius:6px; margin-bottom:6px; }
 .pp32-pending-row .name { flex:1; min-width:0; font-weight:600; font-size:0.85rem; }
 .pp32-pending-row .amt { font-size:0.72rem; color:var(--text-muted); }
 .pp32-pending-row .btn { font-size:0.75rem; padding:5px 10px; border:none; border-radius:6px; cursor:pointer; font-weight:600; }
@@ -792,8 +792,37 @@ a { color: inherit; text-decoration: none; }
 .pp32-pin-text { flex:1; }
 .pp32-pin-title { font-weight:600; font-size:0.9rem; }
 .pp32-pin-sub { font-size:0.75rem; color:var(--text-muted); margin-top:1px; }
-/* On desktop: expand kid cards only when there's something to show (pending) */
-@media (min-width: 720px) { .pp32-kid.has-pending .pp32-kid-body { display:block; } .pp32-kid-chevron { display:none; } .pp32-kid-head { padding: 10px 12px; } }
+/* On desktop: child cards stay COLLAPSED; clicking opens a modal */
+@media (min-width: 720px) { .pp32-kid .pp32-kid-body { display:none; } .pp32-kid-chevron { display:none; } .pp32-kid-head { padding: 10px 12px; } }
+.pp32-kid-head:hover { background: var(--silver-50, #FAFAFA); }
+/* Desktop chore column headers */
+.pp32-chore-headers { display:none; padding: 8px 12px; background: var(--silver-50, #FAFAFA); border-bottom: 1px solid var(--border); font-size: 0.68rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; gap: 10px; align-items:center; }
+@media (min-width: 720px) { .pp32-chore-headers { display:flex; } }
+.pp32-chore-headers .col-main { flex: 1; }
+.pp32-chore-headers .col-assigned { width: 110px; text-align:center; }
+.pp32-chore-headers .col-pay { width: 60px; text-align: right; }
+.pp32-chore-headers .col-actions { width: 60px; text-align: right; }
+@media (min-width: 720px) {
+  .pp32-chore-main { flex-direction: row; align-items: center; }
+  .pp32-chore-main > div:first-child { flex: 1; min-width: 0; }
+  .pp32-mini-avatars { width: 110px; justify-content: center; }
+  .pp32-chore-pay { width: 60px; }
+}
+/* Child detail modal */
+.pp32-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: var(--space-4); animation: pp32fade 0.15s ease-out; }
+.pp32-modal { background: var(--surface); border-radius: 16px; max-width: 460px; width: 100%; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); animation: pp32slide 0.18s ease-out; }
+.pp32-modal-head { display: flex; align-items: center; gap: 12px; padding: 18px; border-bottom: 1px solid var(--border); }
+.pp32-modal-head .pp32-kid-avatar { width: 48px; height: 48px; font-size: 1.15rem; }
+.pp32-modal-head h3 { margin: 0; font-size: 1.15rem; }
+.pp32-modal-close { background: none; border: none; padding: 6px; color: var(--text-muted); cursor: pointer; border-radius: 6px; margin-left: auto; }
+.pp32-modal-close:hover { background: var(--silver-100, #F3F4F6); }
+.pp32-modal-body { padding: 16px 18px; }
+.pp32-modal-section { margin-bottom: 16px; }
+.pp32-modal-section h4 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 0 0 8px; }
+.pp32-modal-actions { display: flex; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--border); background: var(--silver-50, #FAFAFA); }
+.pp32-modal-actions .btn { flex: 1; }
+@keyframes pp32fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pp32slide { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 /* ===== END v=32 ===== */
 .parent-chore-item {
   display: flex; align-items: center; gap: var(--space-3);
@@ -3888,9 +3917,10 @@ async function renderParentSettings() {
       : '';
 
     const hasPending = userPending.length > 0;
+    // Desktop: card click opens modal. Mobile: card click toggles inline expansion.
     return `
       <div class="pp32-kid ${hasPending ? 'has-pending' : ''}" id="kid_${u.id}">
-        <div class="pp32-kid-head" onclick="pp32ToggleKid('${u.id}')">
+        <div class="pp32-kid-head" onclick="pp32KidCardClick('${u.id}')">
           <div class="pp32-kid-avatar" style="background:${color};">${esc(u.name.charAt(0).toUpperCase())}</div>
           <div class="pp32-kid-main">
             <div class="pp32-kid-name">${esc(u.name)}</div>
@@ -3917,6 +3947,20 @@ async function renderParentSettings() {
          <button class="btn btn-primary" onclick="addUserFromParent()">Add Your First Child</button>
        </div>`
     : '';
+
+  // ----- Compute weekly total (sum of chore amounts weighted by frequency) -----
+  let weeklyTotal = 0;
+  allChoresGlobal.forEach(c => {
+    const assignedCount = (c.assignedTo || []).length;
+    if (assignedCount === 0) return;
+    const amt = Number(c.amount) || 0;
+    let perWeek = 0;
+    if (c.recurring === 'daily') perWeek = 7;
+    else if (c.recurring === 'weekly') perWeek = 1;
+    else if (c.recurring === 'specific') perWeek = (c.choreDays || []).length;
+    else if (c.recurring === 'once') perWeek = 0;
+    weeklyTotal += amt * perWeek * assignedCount;
+  });
 
   // ----- Compact chores list with mini-avatar assignment chips -----
   let choreRows;
@@ -3975,9 +4019,15 @@ async function renderParentSettings() {
         <a onclick="openAddChoreFromParent()">+ Add chore</a>
       </div>
       <div class="pp32-chores-box">
+        <div class="pp32-chore-headers">
+          <div class="col-main">Chore</div>
+          <div class="col-assigned">Assigned</div>
+          <div class="col-pay">Pay</div>
+          <div class="col-actions">Actions</div>
+        </div>
         ${choreRows}
         <div class="pp32-chore-footer">
-          <span>${allChoresGlobal.length} chore${allChoresGlobal.length===1?'':'s'} \u00b7 Tap an initial to assign</span>
+          <span>${allChoresGlobal.length} chore${allChoresGlobal.length===1?'':'s'}${weeklyTotal > 0 ? ' \u00b7 $' + fmtNum(weeklyTotal) + ' / week max' : ''}</span>
           <a onclick="openAddChoreFromParent()">+ Add chore</a>
         </div>
       </div>
@@ -4002,6 +4052,84 @@ function pp32ToggleKid(id){
   if (!el) return;
   el.classList.toggle('expanded');
   pp32CloseMenus();
+}
+// v=34: on desktop open modal, on mobile toggle inline
+function pp32KidCardClick(id){
+  if (window.matchMedia('(min-width: 720px)').matches) {
+    pp32OpenKidModal(id);
+  } else {
+    pp32ToggleKid(id);
+  }
+}
+async function pp32OpenKidModal(id){
+  const u = users.find(x => x.id === id);
+  if (!u) return;
+  const idx = users.findIndex(x => x.id === id);
+  const color = getAvatarColor(idx);
+  const allChoresGlobal = await dbGetAllChores();
+  allChoresGlobal.forEach(c => { if (!c.assignedTo) c.assignedTo = c.userId ? [c.userId] : []; });
+  const allChoreLogsGlobal = await dbGetAllChoreLogs();
+  const userPending = allChoreLogsGlobal.filter(cl => cl.userId === u.id && cl.status === 'pending');
+  const userApproved = allChoreLogsGlobal.filter(cl => cl.userId === u.id && cl.status === 'approved');
+  const totalEarned = userApproved.reduce((sum, cl) => {
+    const ch = allChoresGlobal.find(x => x.id === cl.choreId);
+    return sum + (ch ? (Number(ch.amount)||0) : 0);
+  }, 0);
+  const assignedChores = allChoresGlobal.filter(ch => Array.isArray(ch.assignedTo) && ch.assignedTo.includes(u.id));
+
+  const pendingHTML = userPending.length === 0
+    ? '<p style="font-size:0.85rem;color:var(--text-muted);margin:0;">No pending chores to approve.</p>'
+    : userPending.map(cl => {
+        const ch = allChoresGlobal.find(x => x.id === cl.choreId);
+        return `<div class="pp32-pending-row">
+          <div class="name">${ch ? esc(ch.name) : 'Unknown chore'} <span class="amt">$${ch ? fmtNum(ch.amount) : '0'}</span></div>
+          <button class="btn pp32-btn-reject" onclick="rejectChoreFromParent('${cl.id}');pp32CloseKidModal();">Reject</button>
+          <button class="btn pp32-btn-approve" onclick="approveChoreFromParent('${cl.id}','');pp32CloseKidModal();">Approve</button>
+        </div>`;
+      }).join('');
+
+  const assignedHTML = assignedChores.length === 0
+    ? '<p style="font-size:0.85rem;color:var(--text-muted);margin:0;">No chores assigned yet.</p>'
+    : assignedChores.map(ch => `<div style="font-size:0.85rem;padding:4px 0;display:flex;justify-content:space-between;"><span>${esc(ch.name)}</span><span style="color:var(--text-muted);">$${fmtNum(ch.amount)} \u00b7 ${ch.recurring}</span></div>`).join('');
+
+  const safeName = esc(u.name).replace(/'/g,"\\'");
+
+  const html = `
+    <div class="pp32-modal-backdrop" id="pp32KidModal" onclick="if(event.target===this)pp32CloseKidModal()">
+      <div class="pp32-modal">
+        <div class="pp32-modal-head">
+          <div class="pp32-kid-avatar" style="background:${color};">${esc(u.name.charAt(0).toUpperCase())}</div>
+          <div>
+            <h3>${esc(u.name)}</h3>
+            <div style="display:flex;gap:6px;margin-top:4px;"><span class="pp32-pill-earned">$${fmtNum(totalEarned)} earned</span>${userPending.length > 0 ? `<span class="pp32-pill-pending">${userPending.length} pending</span>` : ''}</div>
+          </div>
+          <button class="pp32-modal-close" onclick="pp32CloseKidModal()" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="pp32-modal-body">
+          <div class="pp32-modal-section">
+            <h4>Pending approval${userPending.length > 0 ? ' ('+userPending.length+')' : ''}</h4>
+            ${pendingHTML}
+          </div>
+          <div class="pp32-modal-section">
+            <h4>Assigned chores (${assignedChores.length})</h4>
+            ${assignedHTML}
+          </div>
+        </div>
+        <div class="pp32-modal-actions">
+          <button class="btn btn-outline" onclick="pp32CloseKidModal();unlinkKidDeviceFromParent('${u.id}','${safeName}')">Unlink phone</button>
+          <button class="btn btn-outline" style="color:#DC2626;border-color:#FECACA;" onclick="pp32CloseKidModal();removeUserFromParent('${u.id}','${safeName}')">Remove child</button>
+        </div>
+      </div>
+    </div>`;
+  const existing = document.getElementById('pp32KidModal');
+  if (existing) existing.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+function pp32CloseKidModal(){
+  const m = document.getElementById('pp32KidModal');
+  if (m) m.remove();
 }
 function pp32ToggleMenu(id){
   const menu = document.getElementById('menu_'+id);
