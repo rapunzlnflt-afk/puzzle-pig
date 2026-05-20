@@ -3822,9 +3822,41 @@ async function renderParentSettings() {
           <h3>Pending Approval (${pendingLogs.length})</h3>
         </div>
         ${pendingItems}
-      </div>`;
+      </div>` + ''; // owedHTML inserted just below pendingHTML in final composition
   }
   
+  // --- Children Money Owed (from synced approved chore_logs — Path B: parent has no jar data) ---
+  let owedHTML = '';
+  if (users.length > 0){
+    const owedRows = users.map(u => {
+      const userLogs = allChoreLogsGlobal.filter(cl => cl.userId === u.id && cl.status === 'approved');
+      const total = userLogs.reduce((sum, cl) => {
+        const ch = allChoresGlobal.find(x => x.id === cl.choreId);
+        return sum + (ch ? (Number(ch.amount)||0) : 0);
+      }, 0);
+      const count = userLogs.length;
+      return `
+        <div class="parent-pending-item">
+          <div class="parent-pending-info">
+            <div class="parent-pending-name">${esc(u.name)}</div>
+            <div class="parent-pending-detail">${count} approved chore${count===1?'':'s'}</div>
+          </div>
+          <div style="font-weight:700;color:var(--green-700,#15803D);font-size:1.05rem;">$${fmtNum(total)}</div>
+        </div>`;
+    }).join('');
+    owedHTML = `
+      <div class="parent-section">
+        <div class="parent-section-header">
+          <div class="parent-section-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 6v2m0 8v2"/></svg>
+          </div>
+          <h3>Earnings to Date</h3>
+        </div>
+        ${owedRows || '<p style="color:var(--text-muted);font-size:0.9rem;padding:var(--space-3) 0;">No approved chores yet.</p>'}
+        <p style="font-size:0.75rem;color:var(--text-faint);margin:var(--space-2) 0 0;">Total earned from all approved chores. Your child may have already moved some between jars or spent it.</p>
+      </div>`;
+  }
+
   // --- Chores Section (global list + inline user assignment) ---
   let choreItems;
   const hasChores = allChoresGlobal.length > 0;
@@ -3955,6 +3987,7 @@ async function renderParentSettings() {
     </div>` : ''}
     
     ${pendingHTML}
+    ${owedHTML}
     
     <div class="parent-section">
       <div class="parent-section-header">
@@ -4684,6 +4717,10 @@ function renderJarDetail() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
           Withdraw
         </button>
+        <button class="btn-sm btn-outline" style="flex:1;color:var(--purple-600,#8E6BBF);" onclick="jarStartTransfer('${jar.id}')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;"><path d="M7 17l10-10M7 7h10v10"/></svg>
+          Move
+        </button>
       </div>
       <div id="jarEditArea"></div>
     </div>
@@ -4701,6 +4738,59 @@ function backFromJarDetail() {
   currentJarId = null;
   showView('homeView');
 }
+
+// ===== JAR TRANSFER (child manually moves money between own jars) =====
+function jarStartTransfer(jarId){
+  const srcJar = jars.find(j => j.id === jarId);
+  if (!srcJar) return;
+  const userJars = jars.filter(j => j.userId === srcJar.userId && j.id !== jarId);
+  if (userJars.length === 0){
+    const area = document.getElementById('jarEditArea');
+    area.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;padding:var(--space-2);">No other jars to move money to.</p>';
+    return;
+  }
+  const targetOpts = userJars.map(j => `<option value="${j.id}">${esc(j.name)} ($${fmtNum(j.balance||0)})</option>`).join('');
+  const area = document.getElementById('jarEditArea');
+  area.innerHTML = `
+    <div style="margin-bottom:var(--space-2);">
+      <label class="form-label">Move money from <b>${esc(srcJar.name)}</b> to:</label>
+      <select id="jarTransferTarget" class="form-input">${targetOpts}</select>
+    </div>
+    <div style="margin-bottom:var(--space-2);">
+      <label class="form-label">Amount (available: $${fmtNum(srcJar.balance||0)})</label>
+      <input type="number" id="jarTransferAmount" class="form-input" placeholder="0.00" min="0.01" max="${srcJar.balance||0}" step="0.01" inputmode="decimal">
+    </div>
+    <div style="display:flex;gap:var(--space-2);">
+      <button class="btn-primary" style="flex:1;" onclick="jarDoTransfer('${jarId}')">Move</button>
+      <button class="btn-outline btn-sm" onclick="document.getElementById('jarEditArea').innerHTML=''">Cancel</button>
+    </div>`;
+  setTimeout(()=>{ const el = document.getElementById('jarTransferAmount'); if (el) el.focus(); }, 50);
+}
+
+async function jarDoTransfer(sourceJarId){
+  const src = jars.find(j => j.id === sourceJarId);
+  const targetSel = document.getElementById('jarTransferTarget');
+  const amtInput = document.getElementById('jarTransferAmount');
+  if (!src || !targetSel || !amtInput) return;
+  const tgt = jars.find(j => j.id === targetSel.value);
+  const amt = Math.round((parseFloat(amtInput.value) || 0) * 100) / 100;
+  if (!tgt) { alert('Pick a jar to move money to.'); return; }
+  if (amt <= 0) { alert('Enter an amount greater than 0.'); return; }
+  if (amt > (src.balance || 0)) { alert('Not enough in ' + src.name + '.'); return; }
+  src.balance = Math.round(((src.balance||0) - amt) * 100) / 100;
+  tgt.balance = Math.round(((tgt.balance||0) + amt) * 100) / 100;
+  const now = new Date().toISOString();
+  const txOut = { id: 'jartx_' + Date.now() + '_o', jarId: src.id, userId: src.userId, amount: -amt, type: 'transfer', note: 'To ' + tgt.name, date: now, createdAt: now };
+  const txIn  = { id: 'jartx_' + Date.now() + '_i', jarId: tgt.id, userId: tgt.userId, amount:  amt, type: 'transfer', note: 'From ' + src.name, date: now, createdAt: now };
+  await dbPutJar(src);
+  await dbPutJar(tgt);
+  await dbPutJarTx(txOut);
+  await dbPutJarTx(txIn);
+  jarTxs.push(txOut, txIn);
+  renderJarDetail();
+  if (typeof renderHome === 'function') renderHome();
+}
+try { window.jarStartTransfer = jarStartTransfer; window.jarDoTransfer = jarDoTransfer; } catch(_){}
 
 /* Jar edit actions — called after PIN unlock */
 async function jarEditName(jarId) {
@@ -6438,9 +6528,11 @@ init();
         const j = choreLogs.findIndex(x => x.id === cl.id);
         if (j >= 0) choreLogs[j] = JSON.parse(JSON.stringify(cl)); else choreLogs.push(JSON.parse(JSON.stringify(cl)));
       }
-      // Parent: surface a single combined toast for any pending kid logs
+      // Parent: pending toast disabled — parent sees pending chores inline on settings view.
+      // (Previously called showParentPendingToast() here; removed per user request.)
       if (role === 'parent' && cl.status === 'pending' && wasNew && !recentlyPushed.has(cl.id)){
-        try { showParentPendingToast(); } catch(_){}
+        // Re-render parent settings so the new pending chore appears immediately
+        try { if (typeof renderParentSettings === 'function') renderParentSettings(); } catch(_){}
       }
       // Kid device: credit jar when a log transitions to 'approved'
       if (role === 'child' && cl.status === 'approved' && (!prev || prev.status !== 'approved')){
