@@ -4403,25 +4403,34 @@ async function parentJarDoAction(jarId, userId, action) {
 }
 
 function addUserFromParent() {
-  // Show add user form inline within parent settings
-  const usersCard = document.querySelector('#parentSettingsView .parent-section[data-section="users"] .parent-card');
-  if (!usersCard) return;
-  const existing = usersCard.querySelector('.parent-add-user-form');
-  if (existing) return; // already open
+  // Show add-user form inline within parent settings.
+  // The pp32 layout uses .pp32-children-grid (not the legacy .parent-section
+  // data-section="users"). We fall back to a few selectors so this keeps
+  // working even if the markup is tweaked later.
+  const mount = document.querySelector('#parentSettingsView .pp32-children-grid')
+             || document.querySelector('#parentSettingsView .parent-section[data-section="users"] .parent-card')
+             || document.getElementById('parentSettingsView');
+  if (!mount) return;
+  // Don't open twice.
+  if (document.getElementById('parentNewUserName')) {
+    document.getElementById('parentNewUserName').focus();
+    return;
+  }
   const formDiv = document.createElement('div');
   formDiv.className = 'parent-add-user-form';
-  formDiv.style.cssText = 'margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid var(--silver-300);';
+  formDiv.style.cssText = 'grid-column:1/-1;margin-top:8px;padding:12px 14px;background:var(--purple-50,#F9F7FC);border:1px solid var(--purple-200,#E2DAF0);border-radius:10px;';
   formDiv.innerHTML = `
-    <label class="form-label">New User Name</label>
-    <input type="text" id="parentNewUserName" class="form-input" placeholder="Enter name" maxlength="20"
+    <label class="form-label" style="display:block;margin-bottom:6px;font-weight:600;color:var(--purple-800,#5C4287);">New child's name</label>
+    <input type="text" id="parentNewUserName" class="form-input" placeholder="e.g. Mia" maxlength="20"
+      style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--silver-300,#D8D8DE);border-radius:8px;font-size:0.95rem;"
       onkeydown="if(event.key==='Enter')saveUserFromParent()">
-    <div style="display:flex;gap:var(--space-3);margin-top:var(--space-2);">
+    <div style="display:flex;gap:8px;margin-top:10px;">
       <button class="btn btn-secondary btn-sm" onclick="renderParentSettings()" style="flex:1;">Cancel</button>
       <button class="btn btn-primary btn-sm" onclick="saveUserFromParent()" style="flex:1;">Add</button>
     </div>
   `;
-  usersCard.appendChild(formDiv);
-  setTimeout(() => document.getElementById('parentNewUserName').focus(), 100);
+  mount.appendChild(formDiv);
+  setTimeout(() => { var n = document.getElementById('parentNewUserName'); if (n) n.focus(); }, 100);
 }
 
 async function saveUserFromParent() {
