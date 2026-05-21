@@ -3898,10 +3898,12 @@ async function renderParentSettings() {
     const color = getAvatarColor(idx);
     const userPending = pendingLogsAll.filter(cl => cl.userId === u.id);
     const userApproved = allChoreLogsGlobal.filter(cl => cl.userId === u.id && cl.status === 'approved');
-    const totalEarned = userApproved.reduce((sum, cl) => {
+    const choreEarned = userApproved.reduce((sum, cl) => {
       const ch = allChoresGlobal.find(x => x.id === cl.choreId);
       return sum + (ch ? (Number(ch.amount)||0) : 0);
     }, 0);
+    // v=40: prefer total_saved synced from kid's device (true jar balance); fallback to chore-approved sum
+    const totalEarned = (u.total_saved != null) ? Number(u.total_saved) : choreEarned;
 
     const pendingRows = userPending.map(cl => {
       const ch = allChoresGlobal.find(x => x.id === cl.choreId);
@@ -4074,10 +4076,12 @@ async function pp32OpenKidModal(id){
   const allChoreLogsGlobal = await dbGetAllChoreLogs();
   const userPending = allChoreLogsGlobal.filter(cl => cl.userId === u.id && cl.status === 'pending');
   const userApproved = allChoreLogsGlobal.filter(cl => cl.userId === u.id && cl.status === 'approved');
-  const totalEarned = userApproved.reduce((sum, cl) => {
+  const choreEarned = userApproved.reduce((sum, cl) => {
     const ch = allChoresGlobal.find(x => x.id === cl.choreId);
     return sum + (ch ? (Number(ch.amount)||0) : 0);
   }, 0);
+  // v=40: prefer synced total_saved (true jar balance) over chore-approved sum
+  const totalEarned = (u.total_saved != null) ? Number(u.total_saved) : choreEarned;
   const assignedChores = allChoresGlobal.filter(ch => Array.isArray(ch.assignedTo) && ch.assignedTo.includes(u.id));
 
   const pendingHTML = userPending.length === 0
@@ -6388,6 +6392,8 @@ init();
     };
     // Only include reset_token when explicitly set, so normal pushes don't blow it away
     if (u.reset_token != null) row.reset_token = u.reset_token;
+    // v=40: total_saved column (kid pushes own jar total so parent can see it)
+    if (u.total_saved != null) row.total_saved = Number(u.total_saved) || 0;
     return row;
   }
   function rowToUser(r){
@@ -6396,7 +6402,8 @@ init();
       name: r.name || '',
       avatar: r.avatar || '',
       pin: r.pin || '',
-      reset_token: r.reset_token || ''
+      reset_token: r.reset_token || '',
+      total_saved: (r.total_saved != null) ? Number(r.total_saved) : null
     };
   }
 
@@ -6456,6 +6463,36 @@ init();
       }
     } catch(e){ console.warn('[PuzzlePig sync] push user exception', e); }
   }
+  // v=40: Recompute a user's total_saved (sum of their jar balances) and push to Supabase.
+  // Debounced per-user so a flurry of writes only sends one upsert.
+  const _totalSavedTimers = {};
+  function recomputeAndPushTotalSaved(userId){
+    if (!userId || !familyId) return;
+    if (_totalSavedTimers[userId]) clearTimeout(_totalSavedTimers[userId]);
+    _totalSavedTimers[userId] = setTimeout(async () => {
+      try {
+        // Only the user whose jars these are can compute it (jars are device-local).
+        // If the currently signed-in user isn't this user, skip — their own device will push.
+        if (typeof currentUserId !== 'undefined' && currentUserId !== userId) return;
+        const myJars = (typeof jars !== 'undefined' && Array.isArray(jars)) ? jars : [];
+        const total = Math.round(myJars.reduce((s, j) => s + (Number(j.balance)||0), 0) * 100) / 100;
+        const u = (typeof users !== 'undefined' ? users : []).find(x => x.id === userId);
+        if (!u) return;
+        u.total_saved = total;
+        // Push only the total_saved + identity fields (avoid clobbering other fields by reading row)
+        showSyncChip('Syncing…');
+        const { error } = await sb.from('family_users').update({ total_saved: total }).eq('family_id', familyId).eq('local_id', userId);
+        if (error) {
+          console.warn('[PuzzlePig sync] total_saved update error', error);
+          showSyncChip('Sync failed');
+        } else {
+          console.log('[PuzzlePig sync] total_saved updated', userId, '=', total);
+        }
+      } catch(e){ console.warn('[PuzzlePig sync] total_saved exception', e); }
+    }, 350);
+  }
+  try { window.recomputeAndPushTotalSaved = recomputeAndPushTotalSaved; } catch(_){}
+
   async function deleteUserRemote(localId){
     if (!familyId || !localId) return;
     try {
@@ -6527,6 +6564,25 @@ init();
         return r;
       };
       window.dbDeleteUser.__ppWrapped = true;
+    }
+    // v=40: When jars or jar transactions change, recompute and push the current user's total_saved
+    if (typeof dbPutJar === 'function' && !dbPutJar.__ppWrapped){
+      const orig = dbPutJar;
+      window.dbPutJar = async function(j){
+        const r = await orig(j);
+        try { recomputeAndPushTotalSaved(j && j.userId); } catch(_){}
+        return r;
+      };
+      window.dbPutJar.__ppWrapped = true;
+    }
+    if (typeof dbPutJarTx === 'function' && !dbPutJarTx.__ppWrapped){
+      const orig = dbPutJarTx;
+      window.dbPutJarTx = async function(t){
+        const r = await orig(t);
+        try { recomputeAndPushTotalSaved(t && t.userId); } catch(_){}
+        return r;
+      };
+      window.dbPutJarTx.__ppWrapped = true;
     }
   }
 
