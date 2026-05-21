@@ -751,11 +751,12 @@ a { color: inherit; text-decoration: none; }
 .pp32-kid-avatar { width:38px; height:38px; border-radius:50%; color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:0.95rem; }
 .pp32-kid-main { flex:1; min-width:0; }
 .pp32-kid-name { font-weight:700; font-size:0.95rem; line-height:1.2; }
-.pp32-kid-meta { display:flex; align-items:center; gap:6px; margin-top:3px; flex-wrap:wrap; }
-.pp32-pill-earned { font-size:0.72rem; font-weight:600; background:#DCFCE7; color:#15803D; padding:2px 8px; border-radius:10px; }
-.pp32-pill-linked { font-size:0.7rem; font-weight:600; background:#ECFDF5; color:#047857; padding:2px 8px; border-radius:10px; border:1px solid #A7F3D0; }
-.pp32-pill-unlinked { font-size:0.7rem; font-weight:600; background:#F3F4F6; color:#6B7280; padding:2px 8px; border-radius:10px; border:1px solid #E5E7EB; }
-.pp32-pill-pending { font-size:0.72rem; font-weight:700; background:#FED7AA; color:#C2410C; padding:2px 8px; border-radius:10px; }
+.pp32-kid-meta { display:flex; align-items:center; gap:6px; margin-top:3px; flex-wrap:wrap; width:100%; }
+.pp32-kid-meta > span { font-size:0.72rem; font-weight:600; padding:3px 10px; border-radius:10px; border:1px solid transparent; line-height:1.2; display:inline-flex; align-items:center; }
+.pp32-pill-earned { background:#DCFCE7; color:#15803D; border-color:#BBF7D0; }
+.pp32-pill-linked { background:#ECFDF5; color:#047857; border-color:#A7F3D0; margin-left:auto; }
+.pp32-pill-unlinked { background:#F3F4F6; color:#6B7280; border-color:#E5E7EB; margin-left:auto; }
+.pp32-pill-pending { background:#FED7AA; color:#C2410C; font-weight:700; border-color:#FDBA74; }
 .pp32-kid-chevron { color: var(--text-muted); transition: transform 0.18s; flex-shrink:0; }
 .pp32-kid.expanded .pp32-kid-chevron { transform: rotate(90deg); }
 .pp32-kid-body { padding: 0 12px 12px; display:none; border-top: 1px solid var(--border); padding-top: 10px; }
@@ -7171,7 +7172,7 @@ init();
     waiting.style.display = 'none';
     grid.style.display = 'grid';
     if (title) title.textContent = 'Who are you?';
-    if (sub)   sub.textContent   = 'Tap your face to start.';
+    if (sub)   sub.textContent   = 'Tap your avatar to start.';
     const palette = ['#FF6B9D','#FFB454','#4ECDC4','#A78BFA','#F472B6','#60A5FA','#34D399','#FB923C'];
     grid.innerHTML = list.map((u, idx) => {
       const color = palette[idx % palette.length];
