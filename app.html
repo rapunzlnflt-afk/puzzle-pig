@@ -3107,14 +3107,14 @@ function renderHome() {
       const choreItems = todayChores.map(c => {
         // Check if already done today or this period
         const isPending = choreLogs.some(cl => cl.choreId === c.id && cl.status === 'pending');
-        const isDoneToday = choreLogs.some(cl => cl.choreId === c.id && (cl.status === 'approved' || cl.status === 'pending') && cl.date === todayStr);
+        const isDoneToday = choreLogs.some(cl => cl.choreId === c.id && cl.status === 'approved' && cl.date === todayStr);
         let isDoneThisWeek = false;
         if (c.recurring === 'weekly') {
           const day = today.getDay();
           const mon = new Date(today); mon.setDate(today.getDate() - ((day + 6) % 7)); mon.setHours(0,0,0,0);
           const sun = new Date(mon); sun.setDate(mon.getDate() + 6); sun.setHours(23,59,59,999);
           isDoneThisWeek = choreLogs.some(cl => {
-            if (cl.choreId !== c.id || (cl.status !== 'approved' && cl.status !== 'pending')) return false;
+            if (cl.choreId !== c.id || cl.status !== 'approved') return false;
             const d = new Date(cl.date); return d >= mon && d <= sun;
           });
         }
