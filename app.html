@@ -753,6 +753,8 @@ a { color: inherit; text-decoration: none; }
 .pp32-kid-name { font-weight:700; font-size:0.95rem; line-height:1.2; }
 .pp32-kid-meta { display:flex; align-items:center; gap:6px; margin-top:3px; flex-wrap:wrap; }
 .pp32-pill-earned { font-size:0.72rem; font-weight:600; background:#DCFCE7; color:#15803D; padding:2px 8px; border-radius:10px; }
+.pp32-pill-linked { font-size:0.7rem; font-weight:600; background:#ECFDF5; color:#047857; padding:2px 8px; border-radius:10px; border:1px solid #A7F3D0; }
+.pp32-pill-unlinked { font-size:0.7rem; font-weight:600; background:#F3F4F6; color:#6B7280; padding:2px 8px; border-radius:10px; border:1px solid #E5E7EB; }
 .pp32-pill-pending { font-size:0.72rem; font-weight:700; background:#FED7AA; color:#C2410C; padding:2px 8px; border-radius:10px; }
 .pp32-kid-chevron { color: var(--text-muted); transition: transform 0.18s; flex-shrink:0; }
 .pp32-kid.expanded .pp32-kid-chevron { transform: rotate(90deg); }
@@ -3928,6 +3930,11 @@ async function renderParentSettings() {
     const pillPending = userPending.length > 0
       ? `<span class="pp32-pill-pending">${userPending.length} pending</span>`
       : '';
+    // v=42: device-linked badge
+    const isLinked = !!u.device_claimed_at;
+    const pillDevice = isLinked
+      ? `<span class="pp32-pill-linked" title="Phone linked">● Phone linked</span>`
+      : `<span class="pp32-pill-unlinked" title="No phone linked">○ No phone</span>`;
 
     const hasPending = userPending.length > 0;
     // Desktop: card click opens modal. Mobile: card click toggles inline expansion.
@@ -3937,7 +3944,7 @@ async function renderParentSettings() {
           <div class="pp32-kid-avatar" style="background:${color};">${esc(u.name.charAt(0).toUpperCase())}</div>
           <div class="pp32-kid-main">
             <div class="pp32-kid-name">${esc(u.name)}</div>
-            <div class="pp32-kid-meta">${pillEarned}${pillPending}</div>
+            <div class="pp32-kid-meta">${pillEarned}${pillPending}${pillDevice}</div>
           </div>
           <button class="pp32-menu-btn" onclick="event.stopPropagation();pp32ToggleMenu('${u.id}')" title="More">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
@@ -4179,6 +4186,7 @@ async function unlinkKidDeviceFromParent(kidId, kidName){
   const res = await window.ppSync.unlinkKidDevice(kidId);
   if (res && res.ok){
     alert('Phone unlinked. ' + (kidName || 'The kid') + "'s device will return to the picker.");
+    try { await renderParentSettings(); } catch(_){}
   } else {
     alert('Could not unlink: ' + ((res && res.error) || 'unknown error'));
   }
@@ -6402,6 +6410,8 @@ init();
     if (u.reset_token != null) row.reset_token = u.reset_token;
     // v=40: total_saved column (kid pushes own jar total so parent can see it)
     if (u.total_saved != null) row.total_saved = Number(u.total_saved) || 0;
+    // v=42: device_claimed_at — timestamp when a phone last claimed this kid identity
+    if (u.device_claimed_at !== undefined) row.device_claimed_at = u.device_claimed_at; // null clears it
     return row;
   }
   function rowToUser(r){
@@ -6411,7 +6421,8 @@ init();
       avatar: r.avatar || '',
       pin: r.pin || '',
       reset_token: r.reset_token || '',
-      total_saved: (r.total_saved != null) ? Number(r.total_saved) : null
+      total_saved: (r.total_saved != null) ? Number(r.total_saved) : null,
+      device_claimed_at: r.device_claimed_at || null
     };
   }
 
@@ -7171,6 +7182,12 @@ init();
     localStorage.setItem(LS_KID_USER_ID, kidId);
     localStorage.setItem(LS_KID_RESET_TOKEN, u.reset_token || '');
     kidLockedUserId = kidId;
+    // v=42: mark this kid as having a device claimed so parent sees "Phone linked"
+    try {
+      if (window.ppSync && typeof window.ppSync.markDeviceClaimed === 'function') {
+        window.ppSync.markDeviceClaimed(kidId);
+      }
+    } catch(_){}
     if (u.pin && String(u.pin).length > 0){
       showKidPinScreen(u);
     } else {
@@ -7483,14 +7500,32 @@ init();
       const newTok = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ('r_' + Date.now() + '_' + Math.random().toString(36).slice(2));
       try {
         const { error } = await sb.from('family_users')
-          .update({ reset_token: newTok })
+          .update({ reset_token: newTok, device_claimed_at: null })
           .eq('family_id', familyId)
           .eq('local_id', kidLocalId);
         if (error) return { ok:false, error: error.message || String(error) };
+        // Update local mirror so parent UI reflects immediately
+        try {
+          const u = (typeof users !== 'undefined' ? users : []).find(x => x.id === kidLocalId);
+          if (u) { u.reset_token = newTok; u.device_claimed_at = null; }
+        } catch(_){}
         return { ok:true, token: newTok };
       } catch(e){
         return { ok:false, error: String(e) };
       }
+    },
+    // v=42: Kid device claims an identity — mark device_claimed_at on family_users
+    markDeviceClaimed: async (kidLocalId) => {
+      if (!familyId || !kidLocalId) return { ok:false };
+      try {
+        const nowIso = new Date().toISOString();
+        const { error } = await sb.from('family_users')
+          .update({ device_claimed_at: nowIso })
+          .eq('family_id', familyId)
+          .eq('local_id', kidLocalId);
+        if (error) { console.warn('[PuzzlePig sync] markDeviceClaimed error', error); return { ok:false, error: error.message }; }
+        return { ok:true };
+      } catch(e){ return { ok:false, error: String(e) }; }
     }
   };
 })();
