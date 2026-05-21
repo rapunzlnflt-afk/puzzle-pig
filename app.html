@@ -2622,6 +2622,14 @@ async function selectUser(id) {
       await dbPutJar(saveJar);
     }
   }
+  // v=40: backfill total_saved on every sign-in so parent always sees current jar total
+  try {
+    if (typeof recomputeAndPushTotalSaved === 'function') {
+      recomputeAndPushTotalSaved(id);
+    } else if (window.recomputeAndPushTotalSaved) {
+      window.recomputeAndPushTotalSaved(id);
+    }
+  } catch(e){ console.warn('[PuzzlePig] total_saved backfill skipped', e); }
 
   // Show the main app
   document.getElementById('userSelectScreen').style.display = 'none';
