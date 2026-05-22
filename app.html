@@ -4761,12 +4761,40 @@ function jarVisualSVG(fillPct, color, lidColor, w, h) {
     <!-- Jar body (glass) with rounded shoulders -->
     <path d="M16 36 C16 32 19 30 22 30 L24 30 C25 28 26 27 28 27 L62 27 C64 27 65 28 66 30 L68 30 C71 30 74 32 74 36 L74 102 C74 108 68 113 58 113 L32 113 C22 113 16 108 16 102 Z"
       fill="url(#glass${uid})" stroke="rgba(120,160,185,0.55)" stroke-width="1.5"/>
-    ${pct > 0 ? `
-    <!-- Liquid fill (clipped to jar interior) -->
-    <rect x="14" y="${fillY}" width="62" height="${fillH + 10}" fill="url(#liquid${uid})" clip-path="url(#jarClip)"/>
-    <!-- Wavy surface highlight -->
-    <path d="M16 ${fillY} Q 25 ${fillY - 2}, 34 ${fillY} T 52 ${fillY} T 74 ${fillY}" stroke="${fill}" stroke-width="1.5" fill="none" opacity="0.6" clip-path="url(#jarClip)"/>
-    ` : ''}
+    ${pct > 0 ? (() => {
+      // Random scattered silver coins clipped to jar interior.
+      const silver     = '#C8CCD2';
+      const silverEdge = '#8A8F97';
+      const silverDark = '#6E737B';
+      // Deterministic pseudo-random seeded by uid so scatter is stable per jar.
+      let seed = 0;
+      for (let i = 0; i < uid.length; i++) seed = (seed * 31 + uid.charCodeAt(i)) >>> 0;
+      const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+      const minX = 19, maxX = 71;
+      const yTop = fillY;
+      const yBot = bodyBot - 2;
+      const fillHeight = Math.max(0, yBot - yTop);
+      const density = 0.045;
+      const numCoins = Math.max(3, Math.round((maxX - minX) * fillHeight * density));
+      const coins = [];
+      for (let i = 0; i < numCoins; i++) {
+        const ry = Math.pow(rand(), 0.65);
+        const cy = yTop + ry * fillHeight;
+        const size = 5.0 + rand() * 2.2;
+        const cx = minX + size + rand() * (maxX - minX - size * 2);
+        const rot = (rand() - 0.5) * 60;
+        const ry2 = size * (0.55 + rand() * 0.35);
+        coins.push({ cx, cy, size, ry: ry2, rot });
+      }
+      coins.sort((a, b) => a.cy - b.cy);
+      return coins.map(c => `
+        <g clip-path="url(#jarClip)" transform="rotate(${c.rot.toFixed(1)} ${c.cx.toFixed(1)} ${c.cy.toFixed(1)})">
+          <ellipse cx="${c.cx.toFixed(1)}" cy="${(c.cy + 0.6).toFixed(1)}" rx="${c.size.toFixed(1)}" ry="${c.ry.toFixed(1)}" fill="${silverDark}" opacity="0.45"/>
+          <ellipse cx="${c.cx.toFixed(1)}" cy="${c.cy.toFixed(1)}" rx="${c.size.toFixed(1)}" ry="${c.ry.toFixed(1)}" fill="${silver}" stroke="${silverEdge}" stroke-width="0.6"/>
+          <ellipse cx="${c.cx.toFixed(1)}" cy="${c.cy.toFixed(1)}" rx="${(c.size - 1.4).toFixed(1)}" ry="${(c.ry - 0.9).toFixed(1)}" fill="none" stroke="${silverEdge}" stroke-width="0.4" opacity="0.6"/>
+          <ellipse cx="${(c.cx - c.size * 0.35).toFixed(1)}" cy="${(c.cy - c.ry * 0.45).toFixed(1)}" rx="${(c.size * 0.3).toFixed(1)}" ry="${(c.ry * 0.18).toFixed(1)}" fill="rgba(255,255,255,0.7)"/>
+        </g>`).join('');
+    })() : ''}
     <!-- Glass shine, left -->
     <path d="M22 42 C20 50 20 70 21 88" stroke="rgba(255,255,255,0.75)" stroke-width="2.5" stroke-linecap="round"/>
     <path d="M26 42 C25 48 25 60 25 70" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round"/>
