@@ -6423,10 +6423,29 @@ init();
   const SUPABASE_URL = "https://qwnbycvkrxikgxsrncen.supabase.co";
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF3bmJ5Y3Zrcnhpa2d4c3JuY2VuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNzg2MzAsImV4cCI6MjA5NDY1NDYzMH0.y3xoGdrcNcNA5ug0957EkJlZemRaDQ5bRS91WgEs91o";
 
-  if (typeof supabase === 'undefined' || !supabase.createClient) {
-    console.error('[PuzzlePig sync] Supabase JS library failed to load.');
-    return;
+  // The Supabase SDK loads from a CDN <script>. Depending on network/defer timing
+  // it may not be ready when this module first runs. Instead of bailing (which
+  // silently kills all sync AND leaves the app on a blank screen), wait for it.
+  function startWhenSupabaseReady(attempt){
+    attempt = attempt || 0;
+    if (typeof supabase !== 'undefined' && supabase.createClient) {
+      try { runSync(); } catch(e){ console.error('[PuzzlePig sync] init error', e); }
+      return;
+    }
+    if (attempt >= 100) { // ~15s (100 * 150ms)
+      console.error('[PuzzlePig sync] Supabase JS library failed to load after waiting.');
+      return;
+    }
+    setTimeout(function(){ startWhenSupabaseReady(attempt + 1); }, 150);
   }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ startWhenSupabaseReady(0); });
+  } else {
+    startWhenSupabaseReady(0);
+  }
+  return;
+
+  function runSync(){
 
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: {
@@ -7818,6 +7837,8 @@ init();
       } catch(e){ return { ok:false, error: String(e) }; }
     }
   };
+
+  } // end runSync
 })();
 // ===== END SUPABASE SYNC =====
 </script>
