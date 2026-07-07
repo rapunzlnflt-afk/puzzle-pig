@@ -7584,6 +7584,27 @@ init();
 
   // ===== END KID-MODE LOCKDOWN =====
 
+  // CRITICAL: RLS on chores/chore_logs/family_users requires a row in
+  // public.profiles matching auth.uid(). Anonymous sessions rotate whenever a
+  // refresh token expires, iOS clears storage, the user switches browsers, etc.
+  // Without this, a fresh anon session sees NOTHING — pulls silently return
+  // zero rows, realtime events are filtered out, and pending chores never
+  // appear on the parent phone. This upsert makes every fresh session eligible
+  // to read/receive the family's data.
+  async function ensureProfileLink(){
+    if (!authUserId || !familyId || !role) return;
+    try {
+      const { error } = await sb.from('profiles').upsert({
+        user_id: authUserId,
+        family_id: familyId,
+        role: role === 'child' ? 'child' : 'parent',
+        display_name: role === 'child' ? 'Kid' : 'Parent'
+      }, { onConflict: 'user_id' });
+      if (error) console.warn('[PuzzlePig sync] ensureProfileLink error', error);
+      else console.log('[PuzzlePig sync] profile linked: user_id=' + authUserId.slice(0,8) + '… family_id=' + familyId.slice(0,8) + '… role=' + role);
+    } catch(e){ console.warn('[PuzzlePig sync] ensureProfileLink threw', e); }
+  }
+
   async function onFamilyReady(){
     if (!familyId) return;
     // If this is a kid device, lock the UI down immediately so the parent
@@ -7597,6 +7618,9 @@ init();
     for (let i=0; i<40 && (typeof _memChores === 'undefined'); i++){
       await new Promise(r => setTimeout(r, 100));
     }
+    // Link the current anon auth user to this family so RLS lets us read.
+    // MUST run before the first pull or realtime subscribe.
+    await ensureProfileLink();
     await pullAndMerge();
     subscribeRealtime();
     startSyncPoll();
