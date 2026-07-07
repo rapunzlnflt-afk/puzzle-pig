@@ -6868,16 +6868,26 @@ init();
   }
 
   // Safety-net poll: even if realtime dies silently or the reconnect logic
-  // gets stuck, poll every 15 seconds so nothing is ever more than 15s stale.
+  // gets stuck, poll on a schedule so nothing is ever stale for long.
+  // Parent device polls every 5s so pending-chore notifications feel near-instant
+  // even when realtime is completely broken. Kid device polls every 15s.
   // Skipped when the tab is hidden to preserve mobile battery.
   let _syncPollTimer = null;
   function startSyncPoll(){
     if (_syncPollTimer) return;
+    const intervalMs = (role === 'parent') ? 5000 : 15000;
+    console.log('[PuzzlePig sync] starting safety poll every', intervalMs, 'ms (role=' + role + ')');
+    // Kick off an early catch-up pull 2s after boot so the first refresh doesn't
+    // wait a full interval.
+    setTimeout(function(){
+      if (document.visibilityState === 'hidden' || !familyId) return;
+      pullAndMerge().catch(err => console.warn('[sync] early pull failed', err));
+    }, 2000);
     _syncPollTimer = setInterval(function(){
       if (document.visibilityState === 'hidden') return;
       if (!familyId) return;
       pullAndMerge().catch(err => console.warn('[sync] poll failed', err));
-    }, 15000);
+    }, intervalMs);
   }
 
   // When the tab becomes visible again (mobile: user re-opened the app,
