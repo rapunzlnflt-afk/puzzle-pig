@@ -12,6 +12,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Puzzle Pig">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<!-- Preconnect to speed up the first paint: hint the browser to open TCP+TLS -->
+<!-- connections to font + Supabase hosts in parallel with HTML parsing.       -->
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+<link rel="preconnect" href="https://cdn.fontshare.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://qwnbycvkrxikgxsrncen.supabase.co" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link href="https://api.fontshare.com/v2/css?f[]=pally@400,500,600,700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
 <style>
@@ -1552,7 +1560,11 @@ a { color: inherit; text-decoration: none; }
   /* Remove bottom-nav padding from the app on kid devices so content isn't shifted up */
   body.pp-kid-mode #app { padding-bottom: 0 !important; }
 </style>
- <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+ <!-- defer: don't block HTML parsing on the Supabase SDK download. defer -->
+ <!-- preserves execution order so any later scripts that use `supabase`   -->
+ <!-- still work; init() is called on DOMContentLoaded which fires after   -->
+ <!-- all deferred scripts have executed.                                  -->
+ <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 </head>
 <body>
 <!-- ===== Puzzle Pig: Family Setup Overlay (purple themed) ===== -->
@@ -6803,9 +6815,67 @@ init();
           { event: '*', schema: 'public', table: 'family_users', filter: 'family_id=eq.' + familyId },
           (payload) => handleUserChange(payload))
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') console.log('[PuzzlePig sync] realtime subscribed');
+        // status is one of: SUBSCRIBED, CHANNEL_ERROR, TIMED_OUT, CLOSED.
+        // Prior to July 2026, a silently-dropped channel left parents waiting
+        // several minutes for pending-chore notifications (only a refresh
+        // fixed it). Auto-reconnect + catch-up pull below.
+        if (status === 'SUBSCRIBED') {
+          console.log('[PuzzlePig sync] realtime subscribed');
+          _realtimeReconnectDelay = 2000; // reset backoff on healthy connect
+          // Whenever we (re)connect, do a fresh pull to catch anything missed.
+          pullAndMerge().catch(err => console.warn('[sync] catch-up pull failed', err));
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn('[PuzzlePig sync] realtime', status, '— scheduling reconnect');
+          scheduleRealtimeReconnect();
+        }
       });
   }
+
+  // Exponential backoff reconnect: 2s, 4s, 8s, 16s, capped at 30s.
+  let _realtimeReconnectDelay = 2000;
+  let _realtimeReconnectTimer = null;
+  function scheduleRealtimeReconnect(){
+    if (_realtimeReconnectTimer) return; // already scheduled
+    const delay = _realtimeReconnectDelay;
+    _realtimeReconnectDelay = Math.min(_realtimeReconnectDelay * 2, 30000);
+    _realtimeReconnectTimer = setTimeout(function(){
+      _realtimeReconnectTimer = null;
+      try {
+        console.log('[PuzzlePig sync] reconnecting realtime after', delay, 'ms');
+        subscribeRealtime();
+      } catch(e){ console.warn('[PuzzlePig sync] reconnect threw', e); }
+    }, delay);
+  }
+
+  // Safety-net poll: even if realtime dies silently or the reconnect logic
+  // gets stuck, poll every 15 seconds so nothing is ever more than 15s stale.
+  // Skipped when the tab is hidden to preserve mobile battery.
+  let _syncPollTimer = null;
+  function startSyncPoll(){
+    if (_syncPollTimer) return;
+    _syncPollTimer = setInterval(function(){
+      if (document.visibilityState === 'hidden') return;
+      if (!familyId) return;
+      pullAndMerge().catch(err => console.warn('[sync] poll failed', err));
+    }, 15000);
+  }
+
+  // When the tab becomes visible again (mobile: user re-opened the app,
+  // switched back from another tab, or unlocked the phone), immediately
+  // reconnect realtime and refetch. This is the biggest fix for
+  // "I opened the app and the pending chore wasn't there yet."
+  function _onAppMaybeResumed(){
+    if (document.visibilityState !== 'visible' || !familyId) return;
+    console.log('[PuzzlePig sync] tab visible — reconciling');
+    pullAndMerge().catch(err => console.warn('[sync] visibility pull failed', err));
+    try {
+      const st = realtimeChannel && realtimeChannel.state;
+      if (st !== 'joined' && st !== 'joining') subscribeRealtime();
+    } catch(_){}
+  }
+  document.addEventListener('visibilitychange', _onAppMaybeResumed);
+  window.addEventListener('focus', _onAppMaybeResumed);
+  window.addEventListener('online', _onAppMaybeResumed);
 
   function handleChoreChange(payload){
     if (typeof _memChores === 'undefined') return;
@@ -7452,6 +7522,7 @@ init();
     }
     await pullAndMerge();
     subscribeRealtime();
+    startSyncPoll();
     if (role === 'child'){
       await initKidMode();
     } else if (role === 'parent'){
