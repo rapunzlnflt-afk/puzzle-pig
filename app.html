@@ -1238,8 +1238,9 @@ a { color: inherit; text-decoration: none; }
   display: flex; align-items: center; justify-content: space-between;
   padding: var(--space-2) var(--space-4); margin: calc(-1 * var(--space-4));
   margin-bottom: var(--space-3); background: var(--surface);
-  border-bottom: 1px solid var(--border);
 }
+/* Kid mode: user bar is invisible (avatar + switch button already hidden); drop border too */
+body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparent; }
 .current-user-info {
   display: flex; align-items: center; gap: var(--space-2);
   font-family: var(--font-display); font-weight: 600; font-size: 0.85rem;
@@ -3909,6 +3910,16 @@ function selectUserFromParent(userId) {
 async function renderParentSettings() {
   const view = document.getElementById('parentSettingsView');
 
+  // Preserve which kid cards are currently expanded so approve/reject (or a realtime
+  // refresh) doesn't collapse the box the parent is actively working in.
+  const _preservedExpandedKidIds = (function(){
+    try {
+      return Array.from(view.querySelectorAll('.pp32-kid.expanded'))
+        .map(el => el.id && el.id.indexOf('kid_') === 0 ? el.id.slice(4) : null)
+        .filter(Boolean);
+    } catch(_) { return []; }
+  })();
+
   if (!currentUserId && users.length > 0) currentUserId = users[0].id;
   const allJarsGlobal = await dbGetAllJars();
   jars = allJarsGlobal;
@@ -4054,7 +4065,6 @@ async function renderParentSettings() {
 
       <div class="pp32-section-label">
         <span>Chores${allChoresGlobal.length > 0 ? ' ('+allChoresGlobal.length+')' : ''}</span>
-        <a onclick="openAddChoreFromParent()">+ Add chore</a>
       </div>
       <div class="pp32-chores-box">
         <div class="pp32-chore-headers">
@@ -4082,6 +4092,16 @@ async function renderParentSettings() {
       </div>
     </div>
   `;
+
+  // Restore any kid cards the parent had expanded before this re-render.
+  // Without this, approving/rejecting a chore (or a realtime refresh from the kid
+  // device) would collapse the box the parent is working in.
+  try {
+    _preservedExpandedKidIds.forEach(id => {
+      const el = document.getElementById('kid_' + id);
+      if (el) el.classList.add('expanded');
+    });
+  } catch(_) {}
 }
 
 // v=32: kid card expand/collapse + 3-dot menu
