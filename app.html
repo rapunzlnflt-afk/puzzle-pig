@@ -6390,6 +6390,26 @@ init();
   // ---------- module state ----------
   let familyId = localStorage.getItem(LS_FAMILY_ID) || null;
   let role     = localStorage.getItem(LS_ROLE)      || null;
+  // ---------- testing shortcut: ?role=kid | ?role=parent ----------
+  // Lets you jump straight to the kid or parent side via the URL.
+  // e.g. app.html?role=kid  or  app.html?role=parent
+  try {
+    const _r = new URLSearchParams(location.search).get('role');
+    if (_r) {
+      const _v = _r.toLowerCase();
+      let _forced = null;
+      if (['kid','child','sophie'].includes(_v))       _forced = 'child';
+      else if (['parent','mom','dad'].includes(_v))     _forced = 'parent';
+      if (_forced) {
+        role = _forced;
+        localStorage.setItem(LS_ROLE, role);
+        // strip ?role= from the URL so refreshes/back stay clean
+        const _url = new URL(location.href);
+        _url.searchParams.delete('role');
+        history.replaceState(null, '', _url.pathname + _url.search + _url.hash);
+      }
+    }
+  } catch(_){}
   let familyCode = localStorage.getItem(LS_CODE)    || null;
   // Apply body class as early as possible so CSS hides the wrong screens before init() runs
   try {
