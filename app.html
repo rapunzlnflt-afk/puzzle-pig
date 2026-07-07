@@ -6422,26 +6422,10 @@ init();
   // ---------- module state ----------
   let familyId = localStorage.getItem(LS_FAMILY_ID) || null;
   let role     = localStorage.getItem(LS_ROLE)      || null;
-  // ---------- testing shortcut: ?role=kid | ?role=parent ----------
-  // Lets you jump straight to the kid or parent side via the URL.
-  // e.g. app.html?role=kid  or  app.html?role=parent
-  try {
-    const _r = new URLSearchParams(location.search).get('role');
-    if (_r) {
-      const _v = _r.toLowerCase();
-      let _forced = null;
-      if (['kid','child','sophie'].includes(_v))       _forced = 'child';
-      else if (['parent','mom','dad'].includes(_v))     _forced = 'parent';
-      if (_forced) {
-        role = _forced;
-        localStorage.setItem(LS_ROLE, role);
-        // strip ?role= from the URL so refreshes/back stay clean
-        const _url = new URL(location.href);
-        _url.searchParams.delete('role');
-        history.replaceState(null, '', _url.pathname + _url.search + _url.hash);
-      }
-    }
-  } catch(_){}
+  // NOTE: URL testing shortcut lives in bootSync() as tryUrlAutoJoin().
+  // It requires BOTH ?family=CODE and ?role=kid|parent so the app can join
+  // your real family (a bare ?role= alone has no family data and would strand
+  // you on an empty picker), so we intentionally do NOT force role here.
   let familyCode = localStorage.getItem(LS_CODE)    || null;
   // Apply body class as early as possible so CSS hides the wrong screens before init() runs
   try {
@@ -7705,6 +7689,56 @@ init();
   }
 
   // ---------- boot ----------
+  // ---------- testing shortcut: ?family=CODE&role=kid|parent ----------
+  // Joins your real family by code and jumps straight to the kid or parent side.
+  // e.g. app.html?family=ABC123&role=kid   or   ...&role=parent
+  // Reuses the app's own secure join flow (pulls the real roster from the server).
+  async function tryUrlAutoJoin(){
+    let code, wantRole;
+    try {
+      const qs = new URLSearchParams(location.search);
+      code = (qs.get('family') || '').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
+      const r = (qs.get('role') || '').toLowerCase();
+      if (['kid','child','sophie'].includes(r)) wantRole = 'child';
+      else if (['parent','mom','dad'].includes(r)) wantRole = 'parent';
+    } catch(_){ return false; }
+    if (code.length !== 6 || !wantRole) return false;
+    // Already in this family with the right role? Nothing to do.
+    if (familyId && role === wantRole && familyCode === code) return true;
+    const okAuth = await ensureAnonAuth(); if (!okAuth) return false;
+    try {
+      const { data, error } = await sb.rpc('join_family_for_current_user', {
+        p_family_code: code,
+        p_display_name: wantRole === 'child' ? 'Kid' : 'Parent'
+      });
+      if (error){ console.error('[PuzzlePig] url auto-join error', error); return false; }
+      let famId = null;
+      if (data && typeof data === 'object'){
+        famId = data.family_id || data.id || (Array.isArray(data) && data[0] && (data[0].family_id || data[0].id));
+      } else if (typeof data === 'string'){ famId = data; }
+      if (!famId){
+        const { data: famRows } = await sb.from('families').select('id').eq('family_code', code).limit(1);
+        if (famRows && famRows[0]) famId = famRows[0].id;
+      }
+      if (!famId) return false;
+      familyId = famId; role = wantRole; familyCode = code;
+      localStorage.setItem(LS_FAMILY_ID, familyId);
+      localStorage.setItem(LS_ROLE, role);
+      localStorage.setItem(LS_CODE, code);
+      try {
+        document.body.classList.remove('pp-parent-mode','pp-kid-mode');
+        document.body.classList.add(role === 'child' ? 'pp-kid-mode' : 'pp-parent-mode');
+      } catch(_){}
+      // strip the query so refreshes stay clean
+      try {
+        const u = new URL(location.href);
+        u.searchParams.delete('family'); u.searchParams.delete('role');
+        history.replaceState(null, '', u.pathname + u.search + u.hash);
+      } catch(_){}
+      return true;
+    } catch(e){ console.error('[PuzzlePig] url auto-join exception', e); return false; }
+  }
+
   async function bootSync(){
     wireSetupUI();
     const ok = await ensureAnonAuth();
@@ -7713,6 +7747,8 @@ init();
       showSetupOverlay();
       return;
     }
+    // Testing shortcut via URL (?family=CODE&role=kid|parent)
+    await tryUrlAutoJoin();
     if (familyId && role){
       // Returning user
       hideSetupOverlay();
