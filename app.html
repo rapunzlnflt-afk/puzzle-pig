@@ -6937,12 +6937,82 @@ init();
 
       // Merge users first — chores reference them. Also persist each one to
       // IndexedDB so a reload (before the next pull) still shows them.
+      const _remoteIds = new Set(remoteUsers.map(r => r.id));
+      const _norm = s => (s || '').trim().toLowerCase();
+      // When collapsing duplicates, never lose money: keep the larger saved total.
+      const _maxSaved = (a, b) => {
+        const na = (a == null) ? null : Number(a);
+        const nb = (b == null) ? null : Number(b);
+        if (na == null && nb == null) return null;
+        if (na == null) return nb;
+        if (nb == null) return na;
+        return Math.max(na, nb);
+      };
       for (const ru of remoteUsers){
-        const i = _memUsers.findIndex(x => x.id === ru.id);
+        let i = _memUsers.findIndex(x => x.id === ru.id);
+        // Cloud is the source of truth. If we didn't match by id, but a LOCAL-ONLY
+        // user (whose id is NOT in the cloud) has the same name, that's a stale local
+        // copy created before/after a reinstall — adopt the cloud identity onto it
+        // instead of pushing a second card (fixes "two Daisys / two Dukes").
+        if (i < 0){
+          const dupIdx = _memUsers.findIndex(x => !_remoteIds.has(x.id) && _norm(x.name) === _norm(ru.name) && _norm(ru.name) !== '');
+          if (dupIdx >= 0){
+            const staleId = _memUsers[dupIdx].id;
+            const localCopy = _memUsers[dupIdx];
+            // Adopt cloud identity (id/name) but KEEP THE HIGHER savings total so a
+            // child never loses money when a stale local card is merged in.
+            const merged = Object.assign({}, localCopy, ru);
+            merged.total_saved = _maxSaved(localCopy.total_saved, ru.total_saved);
+            _memUsers[dupIdx] = merged;
+            // Remove the stale local record from IndexedDB so it can't resurrect.
+            try { if (typeof _idbDelete === 'function' && staleId && staleId !== ru.id) await _idbDelete(USER_STORE, staleId); } catch(_){}
+            i = dupIdx;
+          }
+        }
         if (i >= 0) _memUsers[i] = Object.assign({}, _memUsers[i], ru);
         else _memUsers.push(ru);
         try { if (typeof _idbPut === 'function') await _idbPut(USER_STORE, _memUsers.find(x => x.id === ru.id)); } catch(_){}
       }
+      // Final safety net: collapse any remaining same-name duplicates, preferring
+      // the cloud id. Never leaves two cards with the same name.
+      try {
+        const seen = new Map();
+        const deduped = [];
+        for (const u of _memUsers){
+          const key = _norm(u.name);
+          if (key && seen.has(key)){
+            const keepIdx = seen.get(key);
+            const keep = deduped[keepIdx];
+            // Prefer the one whose id exists in the cloud.
+            const keepIsRemote = _remoteIds.has(keep.id);
+            const uIsRemote = _remoteIds.has(u.id);
+            const winner = (uIsRemote && !keepIsRemote) ? u : keep;
+            const loser  = (winner === u) ? keep : u;
+            const collapsed = Object.assign({}, loser, winner); // merge extras, winner id/name wins
+            collapsed.total_saved = _maxSaved(keep.total_saved, u.total_saved); // keep the higher total
+            deduped[keepIdx] = collapsed;
+            try { if (typeof _idbDelete === 'function' && loser.id && loser.id !== winner.id) await _idbDelete(USER_STORE, loser.id); } catch(_){}
+          } else {
+            if (key) seen.set(key, deduped.length);
+            deduped.push(u);
+          }
+        }
+        _memUsers.length = 0;
+        for (const u of deduped) _memUsers.push(u);
+        // If a merge produced a HIGHER total than the cloud had, push the corrected
+        // total back so it persists and syncs (otherwise the next pull reverts it).
+        for (const u of _memUsers){
+          const rem = remoteUsers.find(r => r.id === u.id);
+          const remTotal = rem ? (rem.total_saved == null ? null : Number(rem.total_saved)) : null;
+          const myTotal  = (u.total_saved == null) ? null : Number(u.total_saved);
+          if (myTotal != null && (remTotal == null || myTotal > remTotal)){
+            try {
+              await sb.from('family_users').update({ total_saved: myTotal }).eq('family_id', familyId).eq('local_id', u.id);
+              console.log('[PuzzlePig sync] pushed corrected total after dedup', u.name, '=', myTotal);
+            } catch(e){ console.warn('[PuzzlePig sync] dedup total push failed', e); }
+          }
+        }
+      } catch(e){ console.warn('[PuzzlePig sync] user dedup pass failed', e); }
       // Always mirror into the main script's global `users` array.
       // We reference window.users (not the bare identifier) so this works even
       // though `let users` lives in a different <script> block.
