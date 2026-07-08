@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-08T06:55Z-v55';</script>
+<script>window.__PP_BUILD__='2026-07-08T07:00Z-v56';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -7704,6 +7704,24 @@ init();
         else _memChores.push(rc);
         try { if (typeof _idbPut === 'function') await _idbPut(CHORES_STORE, _memChores.find(x => x.id === rc.id)); } catch(_){}
       }
+      // v56: SELF-HEAL STUCK-LOCAL CHORES. A chore created on the parent device is
+      // written locally and pushed to the cloud fire-and-forget. If that single
+      // push silently fails (network blip, or it fired before the sync layer had
+      // familyId) there is NO retry — the chore lives only in the parent's local
+      // store and can NEVER reach the kid (the reported "Clean cat box / Unload
+      // dishwasher are on the parent page but not on Daisy's list" bug). On every
+      // pull, re-push any local chore the cloud is missing. Idempotent: upsert on
+      // local_id, so re-pushing an existing chore is a no-op.
+      try {
+        const _cloudChoreIds = new Set(remoteChores.map(c => c.id));
+        const _missing = _memChores.filter(c => c && c.id && !_cloudChoreIds.has(c.id));
+        if (_missing.length){
+          console.log('[PuzzlePig sync] reconcile: re-pushing', _missing.length, 'local-only chore(s) to cloud', _missing.map(c => c.name));
+          for (const c of _missing){
+            try { await pushChore(c); } catch(e){ console.warn('[PuzzlePig sync] reconcile push failed', c && c.name, e); }
+          }
+        }
+      } catch(e){ console.warn('[PuzzlePig sync] chore reconcile pass failed', e); }
       // Merge logs (and persist to IndexedDB)
       for (const rl of remoteLogs){
         const i = _memChoreLogs.findIndex(x => x.id === rl.id);
