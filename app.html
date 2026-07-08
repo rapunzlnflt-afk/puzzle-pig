@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-08T07:15Z-v57';</script>
+<script>window.__PP_BUILD__='2026-07-08T06:10Z-v58';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -4789,10 +4789,14 @@ async function renderParentSettings(opts) {
           <span>${allChoresGlobal.length} chore${allChoresGlobal.length===1?'':'s'}${weeklyTotal > 0 ? ' \u00b7 $' + fmtNum(weeklyTotal) + ' / week max' : ''}</span>
           <a onclick="openAddChoreFromParent()">+ Add chore</a>
         </div>
-        <div style="display:flex;justify-content:center;padding:6px 0 2px;">
+        <div style="display:flex;justify-content:center;gap:14px;padding:6px 0 2px;">
           <button type="button" id="ppRepairChoresBtn" onclick="ppRepairChores()" style="background:none;border:none;color:var(--text-muted);font-size:0.78rem;cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:4px 8px;" title="Push any chores that live only on this device up to the cloud so your kids can see them">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             Repair sync
+          </button>
+          <button type="button" id="ppShowChoreStatusBtn" onclick="ppShowChoreStatus()" style="background:none;border:none;color:var(--text-muted);font-size:0.78rem;cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:4px 8px;" title="Show exactly which chores are stored on this device vs the cloud">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Show sync status
           </button>
         </div>
       </div>
@@ -6714,6 +6718,30 @@ async function ppRepairChores() {
   }
 }
 try { window.ppRepairChores = ppRepairChores; } catch(_){}
+
+// v58: Phone-friendly diagnostic — show exactly which chores are stored on this
+// device (IndexedDB + in-memory mirror) vs the cloud, by NAME, so we can see
+// whether specific chores like 'Clean cat box' exist locally but not in cloud.
+async function ppShowChoreStatus() {
+  if (!(window.ppSync && typeof window.ppSync.listChores === 'function')) {
+    alert('Sync is still starting up. Please wait a moment and try again.');
+    return;
+  }
+  const btn = document.getElementById('ppShowChoreStatusBtn');
+  if (btn) { btn.textContent = 'Checking\u2026'; btn.style.pointerEvents = 'none'; }
+  let r;
+  try { r = await window.ppSync.listChores(); }
+  catch(e){ r = null; }
+  if (btn) { btn.style.pointerEvents = ''; try { if (typeof renderParentSettings === 'function') renderParentSettings({ force: true }); } catch(_){} }
+  if (!r) { alert('Could not read chore status right now. Please check your connection and try again.'); return; }
+  const fmt = (arr) => (arr && arr.length) ? ('\n\u2022 ' + arr.join('\n\u2022 ')) : ' (none)';
+  const msg =
+    'ON THIS DEVICE (' + r.localCount + '):' + fmt(r.localNames) +
+    '\n\nIN APP MEMORY (' + r.memCount + '):' + fmt(r.memNames) +
+    '\n\nIN THE CLOUD (' + r.cloudCount + '):' + fmt(r.cloudNames);
+  alert(msg);
+}
+try { window.ppShowChoreStatus = ppShowChoreStatus; } catch(_){}
 
 async function doDeleteChore(id) {
   chores = chores.filter(c => c.id !== id);
@@ -8940,6 +8968,28 @@ init();
       try { await pullAndMerge(); } catch(_){}
       try { if (typeof safeRerender === 'function') safeRerender(); } catch(_){}
       return { ok: failed.length===0, pushed, failed, localCount:(localChores||[]).length, cloudCount:cloudIds.size };
+    },
+    // v58: Full local vs cloud chore listing so the parent can SEE exactly what
+    // is stored on this device vs the cloud (phone-friendly, no console needed).
+    listChores: async () => {
+      let local = [];
+      try { if (typeof _idbGetAll === 'function') local = await _idbGetAll(CHORES_STORE); } catch(_){}
+      let mem = [];
+      try { if (typeof _memChores !== 'undefined') mem = _memChores.slice(); } catch(_){}
+      let cloud = [];
+      try {
+        const { data } = await sb.from('chores').select('local_id,name').eq('family_id', familyId);
+        cloud = data || [];
+      } catch(_){}
+      return {
+        familyId, role,
+        localCount: local.length,
+        memCount: mem.length,
+        cloudCount: cloud.length,
+        localNames: local.map(c => c && c.name).filter(Boolean),
+        memNames: mem.map(c => c && c.name).filter(Boolean),
+        cloudNames: cloud.map(c => c && c.name).filter(Boolean)
+      };
     },
     // How many local chores are missing from the cloud (for the Repair badge).
     countLocalOnlyChores: async () => {
