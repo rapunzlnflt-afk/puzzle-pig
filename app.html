@@ -760,6 +760,18 @@ a { color: inherit; text-decoration: none; }
 .pp32-pagehead h2 { margin:0; font-size:1.25rem; }
 .pp32-section-label { font-size:0.72rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; display:flex; align-items:center; justify-content:space-between; margin: var(--space-3) 0 var(--space-2); }
 .pp32-section-label a { font-size:0.78rem; color: var(--purple-600, #6D28D9); text-decoration:none; font-weight:600; cursor:pointer; }
+/* Family code box (parent settings) */
+.pp-family-code-box { display:flex; flex-wrap:wrap; align-items:center; gap:12px; justify-content:space-between; background:#F5F4F1; border:1px solid rgba(92,66,135,0.18); border-radius:14px; padding:14px 16px; margin-bottom:var(--space-3); }
+.pp-family-code-info { min-width:0; }
+.pp-family-code-value { font-family:'DM Sans',monospace; font-size:2rem; font-weight:700; letter-spacing:5px; color:#5C4287; line-height:1.1; }
+.pp-family-code-hint { font-size:0.78rem; color:var(--text-muted); margin-top:4px; max-width:280px; line-height:1.35; }
+.pp-family-code-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.pp-fc-btn { display:inline-flex; align-items:center; gap:6px; border:1px solid rgba(92,66,135,0.35); background:#fff; color:#5C4287; font-family:inherit; font-size:0.85rem; font-weight:600; padding:9px 14px; border-radius:10px; cursor:pointer; white-space:nowrap; }
+.pp-fc-btn:hover { background:#EFEAF6; }
+.pp-fc-btn-primary { background:#5C4287; color:#fff; border-color:#5C4287; }
+.pp-fc-btn-primary:hover { background:#4A356E; }
+.pp-fc-btn svg { flex-shrink:0; }
+@media (max-width:420px){ .pp-family-code-box { flex-direction:column; align-items:stretch; } .pp-family-code-actions { justify-content:stretch; } .pp-fc-btn { flex:1; justify-content:center; } }
 .pp32-children-grid { display:grid; grid-template-columns: 1fr; gap: var(--space-3); }
 @media (min-width: 720px) { .pp32-children-grid { grid-template-columns: 1fr 1fr; } }
 @media (min-width: 1024px) { .pp32-children-grid { grid-template-columns: 1fr 1fr 1fr; } }
@@ -1605,6 +1617,28 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
         border-radius:14px; cursor:pointer; width:100%;
         font-family:inherit;
       ">I'm a Kid</button>
+    </div>
+
+    <!-- Parent sub-choice: new family vs rejoin existing -->
+    <div id="familySetupParentChoice" style="display:none;">
+      <button id="parentNewFamilyBtn" style="
+        background:#fff; color:#5C4287;
+        border:none; padding:18px 24px; font-size:17px; font-weight:600;
+        border-radius:14px; margin-bottom:14px; cursor:pointer; width:100%;
+        box-shadow:0 6px 18px rgba(0,0,0,0.18);
+        font-family:inherit;
+      ">Start a new family</button>
+      <button id="parentRejoinBtn" style="
+        background:transparent; color:#fff;
+        border:2px solid rgba(255,255,255,0.6); padding:16px 24px; font-size:17px; font-weight:600;
+        border-radius:14px; cursor:pointer; width:100%; margin-bottom:10px;
+        font-family:inherit;
+      ">Rejoin my family (I have a code)</button>
+      <button id="parentChoiceBackBtn" style="
+        background:transparent; color:#fff;
+        border:none; padding:10px; font-size:14px; cursor:pointer; width:100%; opacity:0.85;
+        font-family:inherit;
+      ">← Back</button>
     </div>
 
     <!-- Parent: code display view -->
@@ -3911,6 +3945,74 @@ function selectUserFromParent(userId) {
   selectUser(userId);
 }
 
+// ---- Family code helpers (parent side) ----
+function ppFamilyToast(msg){
+  try {
+    var t = document.getElementById('ppFcToast');
+    if (!t){
+      t = document.createElement('div');
+      t.id = 'ppFcToast';
+      t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#5C4287;color:#fff;padding:12px 20px;border-radius:12px;font-size:15px;font-weight:600;z-index:99999;box-shadow:0 6px 20px rgba(0,0,0,0.25);opacity:0;transition:opacity .2s;font-family:inherit;';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._h);
+    t._h = setTimeout(function(){ t.style.opacity = '0'; }, 2200);
+  } catch(_){}
+}
+
+async function ppCopyText(text){
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch(_){}
+  // Fallback for older/insecure contexts
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    var ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch(_){ return false; }
+}
+
+async function ppCopyFamilyCode(code){
+  code = (code || '').toUpperCase();
+  var ok = await ppCopyText(code);
+  ppFamilyToast(ok ? ('Copied code ' + code) : ('Your code is ' + code));
+}
+
+function ppInviteLink(code){
+  code = (code || '').toUpperCase();
+  // Build a link to THIS app that auto-joins as a kid.
+  var base = location.origin + location.pathname;
+  return base + '?family=' + encodeURIComponent(code) + '&role=kid';
+}
+
+async function ppShareInvite(code){
+  code = (code || '').toUpperCase();
+  var link = ppInviteLink(code);
+  var msg = 'Join our Puzzle Pig family! Open this link on your device to connect (or enter code ' + code + '):\n' + link;
+  // Prefer native share sheet on mobile
+  if (navigator.share){
+    try {
+      await navigator.share({ title: 'Puzzle Pig invite', text: 'Join our Puzzle Pig family (code ' + code + ')', url: link });
+      return;
+    } catch(e){
+      // user cancelled or share failed -> fall through to copy
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+  var ok = await ppCopyText(msg);
+  ppFamilyToast(ok ? 'Invite link copied - paste it to your kid' : 'Invite link ready');
+}
+
 async function renderParentSettings() {
   const view = document.getElementById('parentSettingsView');
 
@@ -4080,6 +4182,33 @@ async function renderParentSettings() {
         <h2>Parent Settings</h2>
         <div style="width:30px;"></div>
       </div>
+
+      ${(function(){
+        var _code = '';
+        try { _code = (localStorage.getItem('pp_family_code') || '').toUpperCase(); } catch(_){}
+        if (!_code && window.ppSync && typeof window.ppSync.state === 'function'){
+          try { _code = (window.ppSync.state().familyCode || '').toUpperCase(); } catch(_){}
+        }
+        if (!_code) return '';
+        return `
+      <div class="pp32-section-label"><span>Family code</span></div>
+      <div class="pp-family-code-box">
+        <div class="pp-family-code-info">
+          <div class="pp-family-code-value" id="ppFamilyCodeValue">${_code}</div>
+          <div class="pp-family-code-hint">Your kids enter this code to join. Same code after any reinstall.</div>
+        </div>
+        <div class="pp-family-code-actions">
+          <button type="button" class="pp-fc-btn" id="ppCopyCodeBtn" onclick="ppCopyFamilyCode('${_code}')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span>Copy code</span>
+          </button>
+          <button type="button" class="pp-fc-btn pp-fc-btn-primary" id="ppShareInviteBtn" onclick="ppShareInvite('${_code}')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            <span>Share invite</span>
+          </button>
+        </div>
+      </div>`;
+      })()}
 
       <div class="pp32-section-label">
         <span>Children${users.length > 0 ? ' ('+users.length+')' : ''}</span>
@@ -7255,6 +7384,8 @@ init();
   }
   function showView(name){
     document.getElementById('familySetupChoice').style.display      = (name === 'choice') ? '' : 'none';
+    var pc = document.getElementById('familySetupParentChoice');
+    if (pc) pc.style.display = (name === 'parentChoice') ? '' : 'none';
     document.getElementById('familySetupParentCode').style.display  = (name === 'parent') ? '' : 'none';
     document.getElementById('familySetupChildEntry').style.display  = (name === 'child')  ? '' : 'none';
   }
@@ -7267,7 +7398,10 @@ init();
     const joinSub  = document.getElementById('familyJoinSubmitBtn');
     const backBtn  = document.getElementById('familyJoinBackBtn');
 
-    if (startBtn) startBtn.onclick = async () => {
+    // Tracks whether the code-entry screen should join as a PARENT (rejoin) or a KID.
+    let _setupJoinAsParent = false;
+
+    const startNewFamily = async () => {
       setStatus('Creating your family…');
       const ok = await ensureAnonAuth(); if (!ok) return;
       const code = genFamilyCode();
@@ -7306,7 +7440,35 @@ init();
       setStatus('');
     };
 
+    // "I'm a Parent" now asks: new family or rejoin existing?
+    if (startBtn) startBtn.onclick = () => {
+      document.getElementById('familySetupHeadline').textContent = "Setting up, or rejoining your family?";
+      showView('parentChoice');
+      setStatus('');
+    };
+
+    const newBtn    = document.getElementById('parentNewFamilyBtn');
+    const rejoinBtn = document.getElementById('parentRejoinBtn');
+    const pChoiceBack = document.getElementById('parentChoiceBackBtn');
+
+    if (newBtn) newBtn.onclick = () => { startNewFamily(); };
+
+    if (rejoinBtn) rejoinBtn.onclick = () => {
+      _setupJoinAsParent = true;
+      document.getElementById('familySetupHeadline').textContent = "Enter your family code to rejoin.";
+      showView('child');
+      setStatus('');
+      setTimeout(()=>{ const i=document.getElementById('familyCodeInput'); if (i) i.focus(); }, 60);
+    };
+
+    if (pChoiceBack) pChoiceBack.onclick = () => {
+      document.getElementById('familySetupHeadline').textContent = "Set up your family to sync chores between devices.";
+      showView('choice');
+      setStatus('');
+    };
+
     if (joinBtn) joinBtn.onclick = () => {
+      _setupJoinAsParent = false;
       document.getElementById('familySetupHeadline').textContent = "Enter the code your parent gave you.";
       showView('child');
       setStatus('');
@@ -7314,8 +7476,14 @@ init();
     };
 
     if (backBtn) backBtn.onclick = () => {
-      document.getElementById('familySetupHeadline').textContent = "Set up your family to sync chores between devices.";
-      showView('choice');
+      // Go back to whichever menu makes sense.
+      if (_setupJoinAsParent){
+        document.getElementById('familySetupHeadline').textContent = "Setting up, or rejoining your family?";
+        showView('parentChoice');
+      } else {
+        document.getElementById('familySetupHeadline').textContent = "Set up your family to sync chores between devices.";
+        showView('choice');
+      }
       setStatus('');
     };
 
@@ -7326,11 +7494,12 @@ init();
     if (joinSub) joinSub.onclick = async () => {
       const code = (codeIn.value || '').trim().toUpperCase();
       if (code.length !== 6){ setStatus('Please enter a 6-character code.', true); return; }
-      setStatus('Joining family…');
+      const asParent = _setupJoinAsParent;
+      setStatus(asParent ? 'Rejoining your family…' : 'Joining family…');
       const ok = await ensureAnonAuth(); if (!ok) return;
       const { data, error } = await sb.rpc('join_family_for_current_user', {
         p_family_code: code,
-        p_display_name: 'Kid'
+        p_display_name: asParent ? 'Parent' : 'Kid'
       });
       if (error){
         console.error('[PuzzlePig sync] join error', error);
@@ -7346,10 +7515,14 @@ init();
         if (famRows && famRows[0]) famId = famRows[0].id;
       }
       if (!famId){ setStatus('Joined, but could not read family ID. Please refresh.', true); return; }
-      familyId = famId; role = 'child'; familyCode = code;
+      familyId = famId; role = asParent ? 'parent' : 'child'; familyCode = code;
       localStorage.setItem(LS_FAMILY_ID, familyId);
       localStorage.setItem(LS_ROLE, role);
       localStorage.setItem(LS_CODE, code);
+      try {
+        document.body.classList.remove('pp-parent-mode','pp-kid-mode');
+        document.body.classList.add(asParent ? 'pp-parent-mode' : 'pp-kid-mode');
+      } catch(_){}
       hideSetupOverlay();
       await onFamilyReady();
     };
