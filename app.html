@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-08T06:10Z-v58';</script>
+<script>window.__PP_BUILD__='2026-07-08T18:30Z-v59';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -4643,8 +4643,10 @@ async function renderParentSettings(opts) {
     try { return localStorage.getItem('pp_role') === 'parent'; } catch(_) { return false; }
   })();
 
-  // ----- Per-child compact cards -----
-  const childCards = users.map((u, idx) => {
+    // ----- Per-child compact cards -----
+  // v59 FIX C: hide blank/ghost users (local-only, no name) from parent UI
+  const _visibleUsers = (users||[]).filter(u => u && u.name && String(u.name).trim());
+  const childCards = _visibleUsers.map((u, idx) => {
     const color = getAvatarColor(idx);
     const userPending = pendingLogsAll.filter(cl => cl.userId === u.id);
     const userApproved = allChoreLogsGlobal.filter(cl => cl.userId === u.id && cl.status === 'approved');
@@ -4701,7 +4703,7 @@ async function renderParentSettings(opts) {
       </div>`;
   }).join('');
 
-  const noChildrenHTML = users.length === 0
+    const noChildrenHTML = _visibleUsers.length === 0
     ? `<div class="pp32-kid" style="text-align:center;padding:var(--space-5);">
          <p style="color:var(--text-muted);margin:0 0 var(--space-3);">No children added yet.</p>
          <button class="btn btn-primary" onclick="addUserFromParent()">Add Your First Child</button>
@@ -4727,9 +4729,9 @@ async function renderParentSettings(opts) {
   if (allChoresGlobal.length > 0) {
     choreRows = allChoresGlobal.map(c => {
       const scheduleText = c.recurring === 'specific' ? formatChoreDays(c.choreDays) : c.recurring;
-      const miniAvatars = users.length === 0
-        ? '<span style="font-size:0.72rem;color:var(--text-faint);">Add a child to assign</span>'
-        : users.map((u, idx) => {
+              const miniAvatars = _visibleUsers.length === 0
+          ? '<span style="font-size:0.72rem;color:var(--text-faint);">Add a child to assign</span>'
+          : _visibleUsers.map((u, idx) => {
             const col = getAvatarColor(idx);
             const isAssigned = c.assignedTo.includes(u.id);
             return `<span class="pp32-mini-avatar ${isAssigned ? '' : 'off'}" style="background:${col};" onclick="toggleChoreUser('${c.id}','${u.id}',${!isAssigned})" title="${esc(u.name)}">${esc(u.name.charAt(0).toUpperCase())}</span>`;
@@ -5850,7 +5852,12 @@ async function jarDoTransfer(sourceJarId){
   await dbPutJar(tgt);
   await dbPutJarTx(txOut);
   await dbPutJarTx(txIn);
-  jarTxs.push(txOut, txIn);
+    jarTxs.push(txOut, txIn);
+  // v59 FIX D: keep the Save-jar goal(s) in sync when money moves in/out of Save
+  try {
+    if (tgt.type === 'save') { await creditGoalsWithOverflow(amt, now.split('T')[0], 'From ' + src.name); await syncSaveJarBalance(); }
+    if (src.type === 'save') { await debitGoalsFromSaveJar(amt, now.split('T')[0], 'To ' + tgt.name); await syncSaveJarBalance(); }
+  } catch(e){ console.warn('[PuzzlePig v59] jarDoTransfer goal sync failed', e); }
   renderJarDetail();
   if (typeof renderHome === 'function') renderHome();
 }
@@ -6263,6 +6270,11 @@ async function confirmTransfer() {
   await dbPutJarTx(txOut);
   await dbPutJarTx(txIn);
   jarTxs.push(txOut, txIn);
+  // v59 FIX D: keep the Save-jar goal(s) in sync when money moves in/out of Save
+  try {
+    if (toJar.type === 'save') { await creditGoalsWithOverflow(amount, now.split('T')[0], `From ${fromJar.name}`); await syncSaveJarBalance(); }
+    if (fromJar.type === 'save') { await debitGoalsFromSaveJar(amount, now.split('T')[0], `To ${toJar.name}`); await syncSaveJarBalance(); }
+  } catch(e){ console.warn('[PuzzlePig v59] confirmTransfer goal sync failed', e); }
   closeTransferModal();
   if (document.getElementById('parentSettingsView').classList.contains('active')) {
     renderParentSettings({ force: true });
@@ -7465,6 +7477,9 @@ init();
   // ---------- push helpers ----------
   async function pushChore(c){
     if (!familyId || !c || !c.id) return;
+    // v59 FIX A: never push non-chore or blank records (blocks phantom clog_/blank re-push)
+    if (String(c.id).indexOf('chore_') !== 0) return;
+    if (!c.name || !String(c.name).trim()) return;
     markPushed(c.id);
     try {
       showSyncChip('Syncing…');
@@ -7779,7 +7794,7 @@ init();
         let _localChores = [];
         try { if (typeof _idbGetAll === 'function') _localChores = await _idbGetAll(CHORES_STORE); } catch(_){}
         if (!_localChores || !_localChores.length) _localChores = _memChores.slice();
-        const _missing = _localChores.filter(c => c && c.id && !_cloudChoreIds.has(c.id));
+            const _missing = _localChores.filter(c => c && c.id && !_cloudChoreIds.has(c.id) && String(c.id).indexOf('chore_') === 0 && c.name && String(c.name).trim());
         if (_missing.length){
           console.log('[PuzzlePig sync] reconcile: re-pushing', _missing.length, 'local-only chore(s) to cloud', _missing.map(c => c.name));
           for (const c of _missing){
@@ -7791,7 +7806,22 @@ init();
             try { await pushChore(c); } catch(e){ console.warn('[PuzzlePig sync] reconcile push failed', c && c.name, e); }
           }
         }
-      } catch(e){ console.warn('[PuzzlePig sync] chore reconcile pass failed', e); }
+            } catch(e){ console.warn('[PuzzlePig sync] chore reconcile pass failed', e); }
+      // v59 FIX B: purge any stray non-chore/blank records from the local store
+      try {
+        if (typeof _idbGetAll === 'function' && typeof _idbDelete === 'function') {
+          const _all = await _idbGetAll(CHORES_STORE);
+          for (const r of (_all||[])) {
+            const badId = !r || !r.id || String(r.id).indexOf('chore_') !== 0;
+            const badName = !r || !r.name || !String(r.name).trim();
+            if (badId || badName) {
+              try { await _idbDelete(CHORES_STORE, r.id); } catch(_){}
+              try { const mi = _memChores.findIndex(x => x.id === r.id); if (mi >= 0) _memChores.splice(mi,1); } catch(_){}
+              console.log('[PuzzlePig v59] purged stray local chore record', r && r.id, r && r.name);
+            }
+          }
+        }
+      } catch(e){ console.warn('[PuzzlePig v59] boot cleanup failed', e); }
       // Merge logs (and persist to IndexedDB)
       for (const rl of remoteLogs){
         const i = _memChoreLogs.findIndex(x => x.id === rl.id);
@@ -8944,7 +8974,7 @@ init();
         if (error) return { ok:false, error: error.message || String(error), pushed:[] };
         cloudIds = new Set((data||[]).map(r => r.local_id));
       } catch(e){ return { ok:false, error:String(e), pushed:[] }; }
-      const missing = (localChores||[]).filter(c => c && c.id && !cloudIds.has(c.id));
+      const missing = (localChores||[]).filter(c => c && c.id && !cloudIds.has(c.id) && String(c.id).indexOf('chore_') === 0 && c.name && String(c.name).trim());
       const pushed = [];
       const failed = [];
       for (const c of missing){
