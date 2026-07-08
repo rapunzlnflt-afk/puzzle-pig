@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-08T07:00Z-v56';</script>
+<script>window.__PP_BUILD__='2026-07-08T07:15Z-v57';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -4789,6 +4789,12 @@ async function renderParentSettings(opts) {
           <span>${allChoresGlobal.length} chore${allChoresGlobal.length===1?'':'s'}${weeklyTotal > 0 ? ' \u00b7 $' + fmtNum(weeklyTotal) + ' / week max' : ''}</span>
           <a onclick="openAddChoreFromParent()">+ Add chore</a>
         </div>
+        <div style="display:flex;justify-content:center;padding:6px 0 2px;">
+          <button type="button" id="ppRepairChoresBtn" onclick="ppRepairChores()" style="background:none;border:none;color:var(--text-muted);font-size:0.78rem;cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:4px 8px;" title="Push any chores that live only on this device up to the cloud so your kids can see them">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Repair sync
+          </button>
+        </div>
       </div>
 
       ${(function(){
@@ -6684,6 +6690,31 @@ async function doSaveChore() {
   renderChoresView();
 }
 
+// v57: Parent-tappable "Repair sync" — pushes any chore that lives only on this
+// device up to the cloud so it can reach the kids. Phone-friendly (no console).
+async function ppRepairChores() {
+  if (!(window.ppSync && typeof window.ppSync.recoverLocalChores === 'function')) {
+    alert('Sync is still starting up. Please wait a moment and try again.');
+    return;
+  }
+  const btn = document.getElementById('ppRepairChoresBtn');
+  if (btn) { btn.textContent = 'Repairing\u2026'; btn.style.pointerEvents = 'none'; }
+  let res;
+  try { res = await window.ppSync.recoverLocalChores(); }
+  catch(e){ res = { ok:false, error:String(e), pushed:[] }; }
+  try { if (typeof renderParentSettings === 'function') renderParentSettings({ force: true }); } catch(_){}
+  if (res && res.ok && res.pushed && res.pushed.length){
+    alert('Synced ' + res.pushed.length + ' chore' + (res.pushed.length===1?'':'s') + ' to your kids:\n\n\u2022 ' + res.pushed.join('\n\u2022 '));
+  } else if (res && res.ok){
+    alert('Everything is already synced \u2014 no chores were missing from the cloud.');
+  } else if (res && res.failed && res.failed.length){
+    alert('Could not sync some chores. Please check your internet connection and try again.');
+  } else {
+    alert('Sync repair could not run right now. Please check your connection and try again.');
+  }
+}
+try { window.ppRepairChores = ppRepairChores; } catch(_){}
+
 async function doDeleteChore(id) {
   chores = chores.filter(c => c.id !== id);
   await dbDeleteChore(id);
@@ -7714,10 +7745,21 @@ init();
       // local_id, so re-pushing an existing chore is a no-op.
       try {
         const _cloudChoreIds = new Set(remoteChores.map(c => c.id));
-        const _missing = _memChores.filter(c => c && c.id && !_cloudChoreIds.has(c.id));
+        // Read the on-device source of truth from IndexedDB (not just the
+        // _memChores mirror) so a chore that got dropped from the mirror by a
+        // stray DELETE/merge is still recovered.
+        let _localChores = [];
+        try { if (typeof _idbGetAll === 'function') _localChores = await _idbGetAll(CHORES_STORE); } catch(_){}
+        if (!_localChores || !_localChores.length) _localChores = _memChores.slice();
+        const _missing = _localChores.filter(c => c && c.id && !_cloudChoreIds.has(c.id));
         if (_missing.length){
           console.log('[PuzzlePig sync] reconcile: re-pushing', _missing.length, 'local-only chore(s) to cloud', _missing.map(c => c.name));
           for (const c of _missing){
+            // Make sure it's back in the mirror so it renders, then push.
+            try {
+              const mi = _memChores.findIndex(x => x.id === c.id);
+              if (mi < 0) _memChores.push(c);
+            } catch(_){}
             try { await pushChore(c); } catch(e){ console.warn('[PuzzlePig sync] reconcile push failed', c && c.name, e); }
           }
         }
@@ -8852,6 +8894,64 @@ init();
       localStorage.removeItem(LS_KID_USER_ID);
       localStorage.removeItem(LS_KID_RESET_TOKEN);
       location.reload();
+    },
+    // v57: RECOVER LOCAL-ONLY CHORES. Reads chores straight from IndexedDB (the
+    // real on-device source of truth — NOT the _memChores mirror, which a stray
+    // realtime DELETE or a raced merge could have emptied) and re-pushes any chore
+    // the cloud is missing. This is the manual "Repair sync" the parent can tap when
+    // a chore shows on their page but never reached a kid. Returns the names pushed.
+    recoverLocalChores: async () => {
+      if (!familyId) return { ok:false, error:'not signed in', pushed:[] };
+      let localChores = [];
+      try {
+        // Prefer raw IndexedDB so we see chores even if _memChores lost them.
+        if (typeof _idbGetAll === 'function') localChores = await _idbGetAll(CHORES_STORE);
+        if ((!localChores || !localChores.length) && typeof _memChores !== 'undefined') localChores = _memChores.slice();
+      } catch(e){
+        try { if (typeof _memChores !== 'undefined') localChores = _memChores.slice(); } catch(_){}
+      }
+      let cloudIds = new Set();
+      try {
+        const { data, error } = await sb.from('chores').select('local_id').eq('family_id', familyId);
+        if (error) return { ok:false, error: error.message || String(error), pushed:[] };
+        cloudIds = new Set((data||[]).map(r => r.local_id));
+      } catch(e){ return { ok:false, error:String(e), pushed:[] }; }
+      const missing = (localChores||[]).filter(c => c && c.id && !cloudIds.has(c.id));
+      const pushed = [];
+      const failed = [];
+      for (const c of missing){
+        try {
+          const { error } = await sb.from('chores').upsert(choreToRow(c), { onConflict:'local_id' });
+          if (error){ failed.push({ name:c.name, error:error.message||String(error) }); }
+          else {
+            pushed.push(c.name);
+            // Make sure it's also in the in-memory mirror + IndexedDB so it renders.
+            try {
+              if (typeof _memChores !== 'undefined'){
+                const i = _memChores.findIndex(x => x.id === c.id);
+                if (i >= 0) _memChores[i] = c; else _memChores.push(c);
+              }
+              if (typeof _idbPut === 'function') await _idbPut(CHORES_STORE, c);
+            } catch(_){}
+          }
+        } catch(e){ failed.push({ name:c.name, error:String(e) }); }
+      }
+      console.log('[PuzzlePig RECOVER] localChores:', (localChores||[]).length, 'cloud:', cloudIds.size, 'pushed:', pushed, 'failed:', failed);
+      try { await pullAndMerge(); } catch(_){}
+      try { if (typeof safeRerender === 'function') safeRerender(); } catch(_){}
+      return { ok: failed.length===0, pushed, failed, localCount:(localChores||[]).length, cloudCount:cloudIds.size };
+    },
+    // How many local chores are missing from the cloud (for the Repair badge).
+    countLocalOnlyChores: async () => {
+      if (!familyId) return 0;
+      try {
+        let localChores = [];
+        if (typeof _idbGetAll === 'function') localChores = await _idbGetAll(CHORES_STORE);
+        if ((!localChores || !localChores.length) && typeof _memChores !== 'undefined') localChores = _memChores.slice();
+        const { data } = await sb.from('chores').select('local_id').eq('family_id', familyId);
+        const cloudIds = new Set((data||[]).map(r => r.local_id));
+        return (localChores||[]).filter(c => c && c.id && !cloudIds.has(c.id)).length;
+      } catch(_){ return 0; }
     },
     // Diagnostic: dump everything we know about sync state
     diag: async () => {
