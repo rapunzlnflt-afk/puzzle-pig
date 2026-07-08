@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-08T06:10Z-v53';</script>
+<script>window.__PP_BUILD__='2026-07-08T06:30Z-v54';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -675,11 +675,11 @@ a { color: inherit; text-decoration: none; }
 .help-btn {
   width: 32px; height: 32px; border-radius: var(--radius-full);
   display: flex; align-items: center; justify-content: center;
-  background: var(--purple-50); color: var(--purple-600);
-  border: 1px solid var(--purple-200); cursor: pointer;
-  transition: all var(--transition-fast); flex-shrink: 0;
+  background: transparent; color: var(--purple-600);
+  border: none; cursor: pointer;
+  transition: opacity var(--transition-fast); flex-shrink: 0;
 }
-.help-btn:hover { background: var(--purple-100); color: var(--purple-700); }
+.help-btn:hover { opacity: 0.7; background: transparent; color: var(--purple-700); }
 .help-btn svg { width: 18px; height: 18px; }
 .help-panel-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1500;
@@ -1166,7 +1166,7 @@ a { color: inherit; text-decoration: none; }
 /* Home jars bar */
 .home-jars-bar {
   background: var(--surface); border-radius: var(--radius-xl); padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border); margin-bottom: var(--space-4);
+  border: none; margin-bottom: var(--space-4);
   cursor: pointer; transition: all var(--transition-fast);
   box-shadow: var(--shadow-sm);
 }
