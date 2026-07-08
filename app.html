@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-07T23:30Z-v47';</script>
+<script>window.__PP_BUILD__='2026-07-08T04:40Z-v48';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -2788,40 +2788,45 @@ async function selectUser(id) {
       await dbPutJar(saveJar);
     }
   }
-  // v=47: LEDGER CATCH-UP. The cloud total_saved is the authoritative record of a child's
-  // lifetime earnings. Early chores (before the sync layer existed) live ONLY as cloud
-  // total_saved and were never recorded as local goal history / jar balances on this device.
-  // If the cloud ledger is HIGHER than what this device's jars total, the child is missing
-  // earnings on her own screen. Restore the difference into the Spend jar (Spend is NOT tied
-  // to goal history, so it won't be reconciled away) with a one-time, idempotent transaction.
+  // v=48: LEDGER CATCH-UP (self-correcting). The cloud total_saved is the authoritative
+  // record of a child's lifetime earnings. Early chores (pre-sync-layer) and any earnings
+  // lost to a device reset/reinstall live ONLY as the cloud total. If this device's jars
+  // total LESS than the cloud ledger, the child is missing earnings on her own screen.
+  //
+  // We reconcile to an ABSOLUTE target instead of tracking a fragile localStorage counter:
+  //   nonRestoredLocal = (sum of jar balances) - (sum of existing 'restore' transactions)
+  //   desiredRestore   = cloudTotal - nonRestoredLocal
+  // Then we make the single Spend-jar 'restore' entry equal desiredRestore. Because the
+  // restore txs live and die with the jar data, a wipe removes them too and the full amount
+  // is restored again automatically — no orphaned localStorage flag can strand the balance.
   try {
     if (typeof sb !== 'undefined' && sb && familyId) {
-      const localTotal = Math.round(jars.reduce((s, j) => s + (Number(j.balance)||0), 0) * 100) / 100;
+      const jarSum = Math.round(jars.reduce((s, j) => s + (Number(j.balance)||0), 0) * 100) / 100;
+      const priorRestore = Math.round(
+        (jarTxs || []).filter(t => t && t.type === 'restore')
+          .reduce((s, t) => s + (Number(t.amount)||0), 0) * 100) / 100;
+      const nonRestoredLocal = Math.round((jarSum - priorRestore) * 100) / 100;
       const { data: cloudRow } = await sb.from('family_users')
         .select('total_saved').eq('family_id', familyId).eq('local_id', id).maybeSingle();
       const cloudTotal = (cloudRow && cloudRow.total_saved != null) ? (Number(cloudRow.total_saved)||0) : null;
-      const restoreKey = 'pp_ledger_restored_' + id;
-      const already = Math.round((Number(localStorage.getItem(restoreKey))||0) * 100) / 100;
-      if (cloudTotal != null && cloudTotal - localTotal > 0.005) {
-        const gap = Math.round((cloudTotal - localTotal) * 100) / 100;
-        // Only restore the portion we have not already restored on this device.
-        const toRestore = Math.round((gap - already) * 100) / 100;
-        if (toRestore > 0.005) {
+      if (cloudTotal != null) {
+        const desiredRestore = Math.round((cloudTotal - nonRestoredLocal) * 100) / 100;
+        const delta = Math.round((desiredRestore - priorRestore) * 100) / 100;
+        if (delta > 0.005) {
           let spendJar = jars.find(j => j.type === 'spend') || jars.find(j => j.type === 'save') || jars[0];
           if (spendJar) {
-            spendJar.balance = Math.round(((spendJar.balance||0) + toRestore) * 100) / 100;
+            spendJar.balance = Math.round(((spendJar.balance||0) + delta) * 100) / 100;
             await dbPutJar(spendJar);
             const nowIso = new Date().toISOString();
             const rtx = {
               id: 'jartx_restore_' + id + '_' + Date.now(),
-              userId: id, jarId: spendJar.id, amount: toRestore,
+              userId: id, jarId: spendJar.id, amount: delta,
               type: 'restore', note: 'Restored earnings (from cloud record)',
               date: nowIso.split('T')[0], createdAt: nowIso,
             };
             await dbPutJarTx(rtx);
             try { jarTxs.push(rtx); } catch(_){}
-            localStorage.setItem(restoreKey, String(Math.round((already + toRestore) * 100) / 100));
-            console.log('[PuzzlePig] Ledger catch-up: restored', toRestore, 'to Spend jar so device matches cloud total', cloudTotal);
+            console.log('[PuzzlePig] Ledger catch-up: added', delta, '→ Spend jar; device now matches cloud total', cloudTotal);
           }
         }
       }
