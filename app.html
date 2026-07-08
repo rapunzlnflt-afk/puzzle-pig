@@ -6480,10 +6480,15 @@ init();
       if (_forced) {
         role = _forced;
         localStorage.setItem(LS_ROLE, role);
-        // strip ?role= from the URL so refreshes/back stay clean
-        const _url = new URL(location.href);
-        _url.searchParams.delete('role');
-        history.replaceState(null, '', _url.pathname + _url.search + _url.hash);
+        // Only strip ?role= here if there is NO ?family= param. When a family
+        // code is present, tryUrlAutoJoin() (in bootSync) still needs to read
+        // both family+role to complete the join; it cleans up the URL itself.
+        const _hasFamily = new URLSearchParams(location.search).get('family');
+        if (!_hasFamily) {
+          const _url = new URL(location.href);
+          _url.searchParams.delete('role');
+          history.replaceState(null, '', _url.pathname + _url.search + _url.hash);
+        }
       }
     }
   } catch(_){}
@@ -7751,6 +7756,56 @@ init();
   }
 
   // ---------- boot ----------
+  // ---------- testing shortcut: ?family=CODE&role=kid|parent ----------
+  // Joins your real family by code and jumps straight to the kid or parent side.
+  // e.g. app.html?family=ABC123&role=kid   or   ...&role=parent
+  // Reuses the app's own secure join flow (pulls the real roster from the server).
+  async function tryUrlAutoJoin(){
+    let code, wantRole;
+    try {
+      const qs = new URLSearchParams(location.search);
+      code = (qs.get('family') || '').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
+      const r = (qs.get('role') || '').toLowerCase();
+      if (['kid','child','sophie'].includes(r)) wantRole = 'child';
+      else if (['parent','mom','dad'].includes(r)) wantRole = 'parent';
+    } catch(_){ return false; }
+    if (code.length !== 6 || !wantRole) return false;
+    // Already in this family with the right role? Nothing to do.
+    if (familyId && role === wantRole && familyCode === code) return true;
+    const okAuth = await ensureAnonAuth(); if (!okAuth) return false;
+    try {
+      const { data, error } = await sb.rpc('join_family_for_current_user', {
+        p_family_code: code,
+        p_display_name: wantRole === 'child' ? 'Kid' : 'Parent'
+      });
+      if (error){ console.error('[PuzzlePig] url auto-join error', error); return false; }
+      let famId = null;
+      if (data && typeof data === 'object'){
+        famId = data.family_id || data.id || (Array.isArray(data) && data[0] && (data[0].family_id || data[0].id));
+      } else if (typeof data === 'string'){ famId = data; }
+      if (!famId){
+        const { data: famRows } = await sb.from('families').select('id').eq('family_code', code).limit(1);
+        if (famRows && famRows[0]) famId = famRows[0].id;
+      }
+      if (!famId) return false;
+      familyId = famId; role = wantRole; familyCode = code;
+      localStorage.setItem(LS_FAMILY_ID, familyId);
+      localStorage.setItem(LS_ROLE, role);
+      localStorage.setItem(LS_CODE, code);
+      try {
+        document.body.classList.remove('pp-parent-mode','pp-kid-mode');
+        document.body.classList.add(role === 'child' ? 'pp-kid-mode' : 'pp-parent-mode');
+      } catch(_){}
+      // strip the query so refreshes stay clean
+      try {
+        const u = new URL(location.href);
+        u.searchParams.delete('family'); u.searchParams.delete('role');
+        history.replaceState(null, '', u.pathname + u.search + u.hash);
+      } catch(_){}
+      return true;
+    } catch(e){ console.error('[PuzzlePig] url auto-join exception', e); return false; }
+  }
+
   async function bootSync(){
     wireSetupUI();
     const ok = await ensureAnonAuth();
@@ -7759,6 +7814,8 @@ init();
       showSetupOverlay();
       return;
     }
+    // Testing shortcut via URL (?family=CODE&role=kid|parent)
+    await tryUrlAutoJoin();
     if (familyId && role){
       // Returning user
       hideSetupOverlay();
