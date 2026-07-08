@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-08T04:40Z-v48';</script>
+<script>window.__PP_BUILD__='2026-07-08T04:55Z-v49';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -2799,17 +2799,19 @@ async function selectUser(id) {
   // Then we make the single Spend-jar 'restore' entry equal desiredRestore. Because the
   // restore txs live and die with the jar data, a wipe removes them too and the full amount
   // is restored again automatically — no orphaned localStorage flag can strand the balance.
+  // NOTE: `sb` and `familyId` live in the sync <script> block and are NOT in scope here,
+  // so we read the cloud total through the exposed window.ppSync.getCloudTotal() bridge.
   try {
-    if (typeof sb !== 'undefined' && sb && familyId) {
-      const jarSum = Math.round(jars.reduce((s, j) => s + (Number(j.balance)||0), 0) * 100) / 100;
-      const priorRestore = Math.round(
-        (jarTxs || []).filter(t => t && t.type === 'restore')
-          .reduce((s, t) => s + (Number(t.amount)||0), 0) * 100) / 100;
-      const nonRestoredLocal = Math.round((jarSum - priorRestore) * 100) / 100;
-      const { data: cloudRow } = await sb.from('family_users')
-        .select('total_saved').eq('family_id', familyId).eq('local_id', id).maybeSingle();
-      const cloudTotal = (cloudRow && cloudRow.total_saved != null) ? (Number(cloudRow.total_saved)||0) : null;
+    const getCloud = (window.ppSync && typeof window.ppSync.getCloudTotal === 'function')
+      ? window.ppSync.getCloudTotal : null;
+    if (getCloud) {
+      const cloudTotal = await getCloud(id);
       if (cloudTotal != null) {
+        const jarSum = Math.round(jars.reduce((s, j) => s + (Number(j.balance)||0), 0) * 100) / 100;
+        const priorRestore = Math.round(
+          (jarTxs || []).filter(t => t && t.type === 'restore')
+            .reduce((s, t) => s + (Number(t.amount)||0), 0) * 100) / 100;
+        const nonRestoredLocal = Math.round((jarSum - priorRestore) * 100) / 100;
         const desiredRestore = Math.round((cloudTotal - nonRestoredLocal) * 100) / 100;
         const delta = Math.round((desiredRestore - priorRestore) * 100) / 100;
         if (delta > 0.005) {
@@ -2830,6 +2832,8 @@ async function selectUser(id) {
           }
         }
       }
+    } else {
+      console.warn('[PuzzlePig] ledger catch-up: ppSync.getCloudTotal not ready yet');
     }
   } catch(e){ console.warn('[PuzzlePig] ledger catch-up skipped', e); }
 
@@ -8741,6 +8745,18 @@ init();
       } catch(e){
         return { ok:false, error: String(e) };
       }
+    },
+    // v=48: Read the authoritative cloud total_saved for a user. Lives here (inside runSync)
+    // because `sb` and `familyId` are only in scope in this script block. The ledger catch-up
+    // in selectUser() (a different <script>) calls this via window.ppSync.getCloudTotal().
+    getCloudTotal: async (userLocalId) => {
+      try {
+        if (!sb || !familyId || !userLocalId) return null;
+        const { data } = await sb.from('family_users')
+          .select('total_saved').eq('family_id', familyId).eq('local_id', userLocalId).maybeSingle();
+        if (data && data.total_saved != null) return Number(data.total_saved) || 0;
+        return null;
+      } catch(e){ console.warn('[PuzzlePig sync] getCloudTotal error', e); return null; }
     },
     // v=42: Kid device claims an identity — mark device_claimed_at on family_users
     markDeviceClaimed: async (kidLocalId) => {
