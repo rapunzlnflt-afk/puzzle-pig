@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-08T06:30Z-v54';</script>
+<script>window.__PP_BUILD__='2026-07-08T06:55Z-v55';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -2894,6 +2894,38 @@ async function selectUser(id) {
   }
 }
 
+// v55: Self-healing chore visibility. The kid's live `chores`/`choreLogs`
+// arrays are snapshotted from local IndexedDB at selectUser() time. If the
+// cloud pull that imports parent-added chores lands AFTER that snapshot (or
+// its safeRerender fires while the home view isn't active yet), the kid can be
+// left showing a stale subset — the reported "assigned chores don't always
+// show up" bug. The realtime-authoritative merged store lives in _memChores /
+// _memChoreLogs (populated by pullAndMerge). Rebuild the visible arrays from it
+// on every render so the kid always sees EVERY chore assigned to them,
+// regardless of sync timing. Idempotent and cheap.
+function syncVisibleChoresFromMem() {
+  try {
+    if (typeof currentUserId === 'undefined' || !currentUserId) return;
+    if (typeof _memChores !== 'undefined' && Array.isArray(_memChores)) {
+      const mine = _memChores.filter(c => {
+        const at = c.assignedTo || (c.userId ? [c.userId] : []);
+        return Array.isArray(at) && at.includes(currentUserId);
+      });
+      // Only replace when the merged store actually knows about chores; never
+      // blow away a good local list with an empty one before the first pull.
+      if (mine.length > 0 || _memChores.length > 0) {
+        chores = mine.map(c => JSON.parse(JSON.stringify(c)));
+      }
+    }
+    if (typeof _memChoreLogs !== 'undefined' && Array.isArray(_memChoreLogs)) {
+      choreLogs = _memChoreLogs
+        .filter(l => l.userId === currentUserId)
+        .map(l => JSON.parse(JSON.stringify(l)));
+    }
+  } catch (_) {}
+}
+try { window.syncVisibleChoresFromMem = syncVisibleChoresFromMem; } catch(_){}
+
 function showCurrentUserBar() {
   const bar = document.getElementById('currentUserBar');
   const user = users.find(u => u.id === currentUserId);
@@ -3298,6 +3330,10 @@ function showView(viewId) {
 
 // ---- Render Home ----
 function renderHome() {
+  // v55: pull the freshest assigned-chore set from the merged store so
+  // parent-added chores always appear even if the initial pull raced the
+  // kid sign-in snapshot.
+  syncVisibleChoresFromMem();
   const list = document.getElementById('goalsList');
   const empty = document.getElementById('goalsEmpty');
   const homeActions = document.getElementById('homeActions');
@@ -6248,6 +6284,7 @@ function updateChoresBadge() {
 let choreMgmtOpen = false;
 
 function renderChoresView() {
+  syncVisibleChoresFromMem(); // v55: authoritative chore list from merged store
   updateChoresBadge();
   const view = document.getElementById('choresView');
   const today = new Date().toISOString().split('T')[0];
