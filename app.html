@@ -237,6 +237,33 @@ a { color: inherit; text-decoration: none; }
   margin-top: var(--space-2); font-size: 0.8rem; color: var(--text-muted);
 }
 
+/* ============ ACHIEVED / TROPHIES ============ */
+.achieved-header { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-5) 0 var(--space-3); font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; color: var(--amber-700, #B45309); }
+.achieved-header svg { flex-shrink: 0; }
+.achieved-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: var(--space-3); }
+.achieved-card {
+  background: linear-gradient(160deg, #FFFBEB, #FEF3C7); border: 1.5px solid #FCD34D;
+  border-radius: var(--radius-xl); padding: var(--space-3); cursor: pointer; text-align: center;
+  transition: all var(--transition-fast); position: relative; overflow: hidden;
+}
+.achieved-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.achieved-card:active { transform: scale(0.98); }
+.achieved-card-thumb {
+  width: 100%; aspect-ratio: 1; border-radius: var(--radius-md); overflow: hidden;
+  background: var(--purple-100); margin-bottom: var(--space-2); position: relative;
+}
+.achieved-card-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.achieved-card-badge {
+  position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--amber-500, #F59E0B); display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.achieved-card-name { font-family: var(--font-display); font-weight: 600; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.achieved-card-status { font-size: 0.72rem; color: var(--amber-700, #B45309); margin-top: 2px; }
+.achieved-card.purchased { background: linear-gradient(160deg, #F0FDF4, #DCFCE7); border-color: #86EFAC; }
+.achieved-card.purchased .achieved-card-status { color: var(--green-700, #15803D); }
+.achieved-card.purchased .achieved-card-badge { background: var(--green-500); }
+
 /* ============ CREATE GOAL VIEW ============ */
 /* Upload-first photo area */
 .photo-upload-area {
@@ -416,6 +443,9 @@ a { color: inherit; text-decoration: none; }
 .history-item-date { color: var(--text-muted); }
 .history-item-amount { font-weight: 600; color: var(--green-600); }
 .history-item-pieces { font-size: 0.75rem; color: var(--purple-600); font-weight: 500; }
+.history-week-header { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3) 0 var(--space-1); font-family: var(--font-display); font-weight: 600; font-size: 0.78rem; color: var(--purple-600); text-transform: uppercase; letter-spacing: 0.04em; }
+.history-week-header:first-child { margin-top: 0; }
+.history-week-header .hwh-line { flex: 1; height: 1px; background: var(--purple-100); }
 
 /* Journal entry actions */
 .journal-entry { position: relative; cursor: pointer; border-radius: var(--radius-md); transition: background var(--transition-fast); margin: 0 calc(-1 * var(--space-2)); padding-left: var(--space-2); padding-right: var(--space-2); }
@@ -1845,6 +1875,7 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
     <div id="homeJarsBar" class="home-jars-bar" style="display:none;"></div>
     <div id="homeChoresSection" style="display:none;"></div>
     <div id="goalsList"></div>
+    <div id="achievedSection" style="display:none;"></div>
     <div id="goalsEmpty" class="goals-empty" style="display:none;">
       <h2>Start Your First Puzzle!</h2>
       <p>Upload a picture of what you want, and watch it appear piece by piece as you save!</p>
@@ -2058,6 +2089,9 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
   <!-- ===== CHORES VIEW ===== -->
   <div id="choresView" class="view"></div>
 
+  <!-- ===== ACHIEVED GOAL DETAIL VIEW ===== -->
+  <div id="achievedView" class="view"></div>
+
 </div>
 
 <!-- ===== CELEBRATION ===== -->
@@ -2069,9 +2103,15 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
     <p class="celebration-subtitle" id="celebrationText"></p>
     <div class="celebration-amount" id="celebrationAmount"></div>
     <div class="celebration-image" id="celebrationImage"></div>
-    <button class="btn celebration-btn" onclick="closeCelebration()" data-testid="btn-close-celebration">
-      Amazing!
-    </button>
+    <div style="display:flex; flex-direction:column; gap:var(--space-2); align-items:center; width:100%; max-width:320px; margin:0 auto;">
+      <button class="btn celebration-btn" onclick="archiveCelebratedGoal()" data-testid="btn-archive-celebration" style="width:100%;">
+        <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-0.15em; margin-right:4px;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H18a2.5 2.5 0 0 1 0 5H16.5"/><path d="M6 9v9a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9"/><path d="M12 22V13"/><path d="m9 16 3-3 3 3"/></svg>
+        Move to My Trophies
+      </button>
+      <button class="btn btn-outline celebration-btn-secondary" onclick="closeCelebration()" data-testid="btn-close-celebration" style="width:100%; background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.4);">
+        Not yet
+      </button>
+    </div>
   </div>
 </div>
 <canvas id="confetti-canvas"></canvas>
@@ -2125,6 +2165,37 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeJarAllocModal()">Cancel</button>
       <button class="btn btn-primary" onclick="confirmJarAlloc()" id="jarAllocConfirmBtn">Add to Jar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PURCHASE PRICE MODAL ===== -->
+<div class="modal-backdrop" id="purchaseModal">
+  <div class="modal">
+    <h3>You bought it!</h3>
+    <p id="purchaseSubtitle" style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:var(--space-3);"></p>
+    <div class="form-group">
+      <label class="form-label" for="purchasePrice">How much did it actually cost?</label>
+      <div class="amount-input-wrap">
+        <input type="number" id="purchasePrice" class="form-input" placeholder="0.00" min="0" step="0.01" inputmode="decimal" oninput="updatePurchasePreview()">
+      </div>
+    </div>
+    <div id="purchasePreview" style="display:none; background:var(--purple-50); border-radius:var(--radius-lg); padding:var(--space-3); font-size:0.85rem; color:var(--text-muted); margin-bottom:var(--space-2);"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closePurchaseModal()">Cancel</button>
+      <button class="btn btn-green" onclick="confirmPurchase()" id="confirmPurchaseBtn" data-testid="btn-confirm-purchase">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LEFTOVER JAR PICKER MODAL ===== -->
+<div class="modal-backdrop" id="leftoverModal">
+  <div class="modal">
+    <h3>Money left over!</h3>
+    <p id="leftoverSubtitle" style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:var(--space-4);"></p>
+    <div id="leftoverJars"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary btn-block" onclick="confirmLeftover()" id="leftoverConfirmBtn" data-testid="btn-confirm-leftover">Put it in this jar</button>
     </div>
   </div>
 </div>
@@ -3073,6 +3144,11 @@ function showView(viewId) {
     document.getElementById('bottomNav').style.display = '';
     document.getElementById('currentUserBar').style.display = 'none';
     renderPuzzle();
+  } else if (viewId === 'achievedView') {
+    document.getElementById('mainHeader').style.display = 'none';
+    document.getElementById('bottomNav').style.display = '';
+    document.getElementById('currentUserBar').style.display = 'none';
+    renderAchievedView();
   } else if (viewId === 'savingsEntryView') {
     document.getElementById('mainHeader').style.display = 'none';
     document.getElementById('bottomNav').style.display = 'none';
@@ -3195,17 +3271,25 @@ function renderHome() {
     homeChoresEl.style.display = 'none';
   }
 
-  if (goals.length === 0) {
+  // Split active vs archived (achieved) goals
+  const activeGoalsList = goals.filter(g => !g.archived);
+  const achievedGoalsList = goals.filter(g => g.archived)
+    .sort((a, b) => new Date(b.archivedAt || 0) - new Date(a.archivedAt || 0));
+
+  renderAchievedSection(achievedGoalsList);
+
+  if (activeGoalsList.length === 0) {
     list.innerHTML = '';
-    empty.style.display = '';
-    homeActions.style.display = 'none';
+    // Only show the big empty state if there are no achieved goals either
+    empty.style.display = achievedGoalsList.length === 0 ? '' : 'none';
+    homeActions.style.display = achievedGoalsList.length === 0 ? 'none' : 'flex';
     return;
   }
 
   empty.style.display = 'none';
   homeActions.style.display = 'flex';
 
-  list.innerHTML = goals.map(g => {
+  list.innerHTML = activeGoalsList.map(g => {
     const saved = g.history.reduce((sum, h) => sum + h.amount, 0);
     const pct = Math.min(100, (saved / g.goalAmount) * 100);
     // Progress percentage for home card display
@@ -3256,6 +3340,41 @@ function renderHome() {
       </div>
     `;
   }).join('');
+}
+
+// ---- Achieved / Trophies section on the child's home screen ----
+function renderAchievedSection(achievedGoals) {
+  const sec = document.getElementById('achievedSection');
+  if (!sec) return;
+  if (!achievedGoals || achievedGoals.length === 0) { sec.style.display = 'none'; sec.innerHTML = ''; return; }
+
+  const cards = achievedGoals.map(g => {
+    const purchased = !!g.purchased;
+    let thumb;
+    if (g.imageData) {
+      thumb = `<img src="${g.imageData}" alt="${esc(g.name)}">`;
+    } else {
+      thumb = `<div class="thumb-pig-bg"><img src="${PIGGY_OVERLAY_SRC}" alt="" style="width:100%;height:100%;object-fit:cover;"></div>`;
+    }
+    const badge = purchased
+      ? `<div class="achieved-card-badge"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>`
+      : `<div class="achieved-card-badge"><svg width="13" height="13" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="1"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3"/></svg></div>`;
+    const status = purchased ? 'Bought it!' : 'Ready to buy';
+    return `
+      <div class="achieved-card${purchased ? ' purchased' : ''}" onclick="openAchievedGoal('${g.id}')" data-testid="achieved-card-${g.id}">
+        <div class="achieved-card-thumb">${thumb}${badge}</div>
+        <div class="achieved-card-name">${esc(g.name)}</div>
+        <div class="achieved-card-status">${status}</div>
+      </div>`;
+  }).join('');
+
+  sec.innerHTML = `
+    <div class="achieved-header">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3"/></svg>
+      My Trophies
+    </div>
+    <div class="achieved-grid">${cards}</div>`;
+  sec.style.display = '';
 }
 
 // ---- Categories ----
@@ -3430,7 +3549,240 @@ function resetCreateForm() {
 function cancelCreate() { editingGoalId = null; showView('homeView'); }
 
 // ---- Open Goal ----
-function openGoal(id) { currentGoalId = id; showView('puzzleView'); }
+function openGoal(id) {
+  const g = goals.find(x => x.id === id);
+  if (g && g.archived) { openAchievedGoal(id); return; }
+  currentGoalId = id; showView('puzzleView');
+}
+
+// ---- Achieved goal detail + purchase flow ----
+function openAchievedGoal(id) {
+  currentGoalId = id;
+  renderAchievedView();
+  showView('achievedView');
+}
+
+function renderAchievedView() {
+  const goal = goals.find(g => g.id === currentGoalId);
+  const view = document.getElementById('achievedView');
+  if (!goal) { view.innerHTML = ''; return; }
+  const saved = goal.history.reduce((s, h) => s + h.amount, 0);
+  const purchased = !!goal.purchased;
+
+  let imgHTML;
+  if (goal.imageData) {
+    imgHTML = `<img src="${goal.imageData}" alt="${esc(goal.name)}" style="width:100%;height:100%;object-fit:cover;">`;
+  } else {
+    imgHTML = `<div class="thumb-pig-bg"><img src="${PIGGY_OVERLAY_SRC}" alt="" style="width:100%;height:100%;object-fit:cover;"></div>`;
+  }
+
+  let actionHTML;
+  if (purchased) {
+    const price = goal.purchasePrice || 0;
+    const pd = goal.purchasedAt ? new Date(goal.purchasedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+    const leftover = (goal.purchaseLeftover || 0);
+    let leftoverLine = '';
+    if (goal.purchaseOverspent) {
+      leftoverLine = `<p style="font-size:0.85rem; color:var(--text-muted); margin-top:var(--space-1);">It cost more than you saved — the jar was emptied for this goal.</p>`;
+    } else if (leftover > 0 && goal.leftoverJarName) {
+      leftoverLine = `<p style="font-size:0.85rem; color:var(--text-muted); margin-top:var(--space-1);">$${fmtNum(leftover)} left over went to your <strong>${esc(goal.leftoverJarName)}</strong> jar.</p>`;
+    }
+    actionHTML = `
+      <div style="text-align:center; background:var(--green-50, #F0FDF4); border:1px solid #86EFAC; border-radius:var(--radius-lg); padding:var(--space-4);">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="var(--green-500)" stroke="#FFF" stroke-width="2" style="display:block; margin:0 auto var(--space-1);"><circle cx="12" cy="12" r="10" fill="var(--green-500)"/><path d="M9 12l2 2 4-4" fill="none" stroke="#FFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <p style="font-family:var(--font-display); font-weight:700; color:var(--green-700, #15803D); font-size:1.05rem;">You bought it${pd ? ' on ' + pd : ''}!</p>
+        <p style="font-size:0.9rem; color:var(--text-muted); margin-top:2px;">Paid $${fmtNum(price)}</p>
+        ${leftoverLine}
+      </div>`;
+  } else {
+    actionHTML = `
+      <div style="text-align:center;">
+        <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:var(--space-3);">You saved <strong style="color:var(--purple-700);">$${fmtNum(saved)}</strong> for this. When you buy it, tap the button and tell me the price.</p>
+        <button class="btn btn-green btn-block" onclick="startPurchase('${goal.id}')" data-testid="btn-i-bought-it">
+          <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-0.15em; margin-right:4px;"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          I Bought It!
+        </button>
+      </div>`;
+  }
+
+  view.innerHTML = `
+    <div class="puzzle-header">
+      <button class="puzzle-back" onclick="showView('homeView')" data-testid="btn-back-home-achieved">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+        Goals
+      </button>
+    </div>
+    <div style="display:flex; align-items:center; gap:var(--space-2); justify-content:center; margin-bottom:var(--space-2);">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--amber-600, #D97706)" stroke-width="2"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4zM5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3"/></svg>
+      <h2 class="puzzle-goal-name" style="margin:0;">${esc(goal.name)}</h2>
+    </div>
+    <div class="reveal-container complete" style="margin-bottom:var(--space-4);">${imgHTML}<div class="reveal-pct-overlay">100%</div></div>
+    ${actionHTML}
+    <div style="margin-top:var(--space-4); text-align:center;">
+      <button class="btn btn-sm btn-outline" onclick="unarchiveGoal('${goal.id}')" data-testid="btn-unarchive">Move back to active goals</button>
+    </div>`;
+}
+
+async function unarchiveGoal(id) {
+  const goal = goals.find(g => g.id === id);
+  if (!goal) return;
+  goal.archived = false;
+  delete goal.archivedAt;
+  await dbPut(goal);
+  showView('homeView');
+  renderHome();
+}
+
+// State for the purchase flow
+let purchaseGoalId = null;
+let pendingLeftoverAmount = 0;
+let selectedLeftoverJarId = null;
+
+function startPurchase(id) {
+  purchaseGoalId = id;
+  const goal = goals.find(g => g.id === id);
+  if (!goal) return;
+  const saved = goal.history.reduce((s, h) => s + h.amount, 0);
+  document.getElementById('purchaseSubtitle').textContent = `You saved $${fmtNum(saved)} for your ${goal.name}.`;
+  document.getElementById('purchasePrice').value = '';
+  document.getElementById('purchasePreview').style.display = 'none';
+  document.getElementById('purchaseModal').classList.add('active');
+  setTimeout(() => { const el = document.getElementById('purchasePrice'); if (el) el.focus(); }, 150);
+}
+
+function updatePurchasePreview() {
+  const goal = goals.find(g => g.id === purchaseGoalId);
+  if (!goal) return;
+  const saved = goal.history.reduce((s, h) => s + h.amount, 0);
+  const price = parseFloat(document.getElementById('purchasePrice').value);
+  const prev = document.getElementById('purchasePreview');
+  if (isNaN(price) || price < 0) { prev.style.display = 'none'; return; }
+  const diff = Math.round((saved - price) * 100) / 100;
+  prev.style.display = '';
+  if (diff > 0) {
+    prev.innerHTML = `You will have <strong style="color:var(--green-600);">$${fmtNum(diff)}</strong> left over — you get to pick a jar for it.`;
+  } else if (diff === 0) {
+    prev.innerHTML = `That is exactly what you saved. Nothing left over.`;
+  } else {
+    prev.innerHTML = `That is <strong>$${fmtNum(Math.abs(diff))}</strong> more than you saved. We will just mark it bought.`;
+  }
+}
+
+function closePurchaseModal() {
+  document.getElementById('purchaseModal').classList.remove('active');
+}
+
+async function confirmPurchase() {
+  const goal = goals.find(g => g.id === purchaseGoalId);
+  if (!goal) { closePurchaseModal(); return; }
+  const price = parseFloat(document.getElementById('purchasePrice').value);
+  if (isNaN(price) || price < 0) { shakeInput('purchasePrice'); return; }
+
+  const saved = Math.round(goal.history.reduce((s, h) => s + h.amount, 0) * 100) / 100;
+
+  // Remove this goal's saved money from the Save jar (the child is spending it).
+  const saveJar = jars.find(j => j.type === 'save');
+  if (saveJar) {
+    saveJar.balance = Math.round(Math.max(0, (saveJar.balance || 0) - saved) * 100) / 100;
+    await dbPutJar(saveJar);
+    await dbPutJarTx({
+      id: 'jartx_' + Date.now() + '_buy',
+      jarId: saveJar.id,
+      userId: currentUserId,
+      amount: -saved,
+      type: 'purchase',
+      note: `Bought: ${goal.name}`,
+      date: new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  const leftover = Math.round((saved - price) * 100) / 100;
+  goal.purchased = true;
+  goal.purchasePrice = price;
+  goal.purchasedAt = new Date().toISOString();
+
+  if (leftover > 0) {
+    // Under budget — let the child choose a jar for the leftover.
+    goal.purchaseOverspent = false;
+    goal.purchaseLeftover = leftover;
+    await dbPut(goal);
+    closePurchaseModal();
+    openLeftoverModal(leftover);
+    return;
+  }
+
+  // Exact or overspend — just mark purchased, nothing returned.
+  goal.purchaseOverspent = leftover < 0;
+  goal.purchaseLeftover = 0;
+  await dbPut(goal);
+  closePurchaseModal();
+  renderAchievedView();
+  renderHome();
+  showEncouragement(0, `Nice — enjoy your ${goal.name}!`);
+}
+
+function openLeftoverModal(amount) {
+  pendingLeftoverAmount = amount;
+  selectedLeftoverJarId = jars.length > 0 ? jars[0].id : null;
+  document.getElementById('leftoverSubtitle').textContent = `You have $${fmtNum(amount)} left. Which jar should it go in?`;
+  renderLeftoverJars();
+  document.getElementById('leftoverModal').classList.add('active');
+}
+
+function renderLeftoverJars() {
+  const container = document.getElementById('leftoverJars');
+  if (jars.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-muted);text-align:center;">No jars set up yet.</p>';
+    return;
+  }
+  container.innerHTML = jars.map(j => `
+    <button class="jar-alloc-jar-btn${selectedLeftoverJarId === j.id ? ' selected' : ''}" onclick="selectLeftoverJar('${j.id}')">
+      <div class="jar-alloc-icon" style="background:${j.color}">${jarSVG(j.color, 20)}</div>
+      <div class="jar-alloc-info">
+        <div class="jar-alloc-name">${esc(j.name)}</div>
+        <div class="jar-alloc-bal">Balance: $${fmtNum(j.balance || 0)}</div>
+      </div>
+      ${selectedLeftoverJarId === j.id ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--purple-600)" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>' : ''}
+    </button>
+  `).join('');
+}
+
+function selectLeftoverJar(id) {
+  selectedLeftoverJarId = id;
+  renderLeftoverJars();
+}
+
+async function confirmLeftover() {
+  const goal = goals.find(g => g.id === purchaseGoalId);
+  const jar = jars.find(j => j.id === selectedLeftoverJarId);
+  if (!goal || !jar || !pendingLeftoverAmount) {
+    document.getElementById('leftoverModal').classList.remove('active');
+    renderAchievedView(); renderHome();
+    return;
+  }
+  const amount = pendingLeftoverAmount;
+  jar.balance = Math.round(((jar.balance || 0) + amount) * 100) / 100;
+  await dbPutJar(jar);
+  await dbPutJarTx({
+    id: 'jartx_' + Date.now() + '_leftover',
+    jarId: jar.id,
+    userId: currentUserId,
+    amount,
+    type: 'deposit',
+    note: `Left over from ${goal.name}`,
+    date: new Date().toISOString().split('T')[0],
+    createdAt: new Date().toISOString()
+  });
+  goal.leftoverJarName = jar.name;
+  await dbPut(goal);
+  document.getElementById('leftoverModal').classList.remove('active');
+  pendingLeftoverAmount = 0;
+  selectedLeftoverJarId = null;
+  renderAchievedView();
+  renderHome();
+  showEncouragement(0, `$${fmtNum(amount)} saved in your ${jar.name} jar!`);
+}
 
 // ---- Render Puzzle ----
 function renderPuzzle() {
@@ -3470,7 +3822,11 @@ function renderPuzzle() {
     saveBtnArea.innerHTML = `
       <div style="text-align:center; padding:var(--space-3);">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="var(--green-500)" stroke="#FFF" stroke-width="2" style="display:block; margin:0 auto;"><circle cx="12" cy="12" r="10" fill="var(--green-500)"/><path d="M9 12l2 2 4-4" fill="none" stroke="#FFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <p style="font-family:var(--font-display); font-weight:600; color:var(--green-600); margin-top:var(--space-1);">Goal Complete!</p>
+        <p style="font-family:var(--font-display); font-weight:600; color:var(--green-600); margin-top:var(--space-1); margin-bottom:var(--space-3);">Goal Complete!</p>
+        <button class="btn btn-primary btn-block" onclick="archiveGoal('${goal.id}')" data-testid="btn-archive-goal">
+          <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-0.15em; margin-right:4px;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H18a2.5 2.5 0 0 1 0 5H16.5"/><path d="M6 9v9a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9"/><path d="M12 22V13"/><path d="m9 16 3-3 3 3"/></svg>
+          Move to My Trophies
+        </button>
       </div>`;
   } else {
     saveBtnArea.innerHTML = `
@@ -3529,10 +3885,14 @@ function renderHistory(goal) {
     list.innerHTML = '<p style="text-align:center; color:var(--text-faint); font-size:0.85rem; padding:var(--space-3);">No savings yet — start saving!</p>';
     return;
   }
+  let lastWk = null;
   list.innerHTML = goal.history.slice().reverse().slice(0, 3).map((h, i) => {
     const d = new Date(h.date);
     const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    return `
+    const wl = weekOfLabel(h.date);
+    let weekHeader = '';
+    if (wl !== lastWk) { lastWk = wl; weekHeader = `<div class="history-week-header"><span>${wl}</span><span class="hwh-line"></span></div>`; }
+    return weekHeader + `
       <div class="history-item" data-testid="history-item-${i}">
         <div class="history-item-left">
           <span style="font-size:1rem;"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-0.125em;"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M8 10h8M8 14h8"/></svg></span>
@@ -3794,8 +4154,19 @@ function renderSavingsJournal(goal) {
     return { ...h, index: i, pctGain, totalAfter: cumulative, pctAfter: newPct };
   });
 
+  let lastWeekLabel = null;
   list.innerHTML = entries.slice().reverse().map((e) => {
     const realIdx = e.index; // actual index in goal.history array
+
+    // Week grouping header (only when not editing this entry)
+    let weekHeader = '';
+    if (editingEntryIndex !== realIdx) {
+      const wl = weekOfLabel(e.date);
+      if (wl !== lastWeekLabel) {
+        lastWeekLabel = wl;
+        weekHeader = `<div class="history-week-header"><span>${wl}</span><span class="hwh-line"></span></div>`;
+      }
+    }
 
     // If this entry is being edited, show inline form
     if (editingEntryIndex === realIdx) {
@@ -3833,7 +4204,7 @@ function renderSavingsJournal(goal) {
     const noteLine = e.note
       ? `<div class="history-item-note"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-0.125em;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> ${esc(e.note)}</div>`
       : '';
-    return `
+    return weekHeader + `
       <div class="journal-entry history-item" onclick="startEditEntry(${realIdx})" data-testid="journal-item-${realIdx}" style="flex-wrap:wrap;">
         <div class="history-item-left">
           <div>
@@ -3904,7 +4275,9 @@ async function deleteJournalEntry(idx) {
 async function syncSaveJarBalance() {
   const saveJar = jars.find(j => j.type === 'save');
   if (!saveJar) return;
-  const totalSaved = goals.reduce((total, g) => total + g.history.reduce((s, h) => s + h.amount, 0), 0);
+  // Exclude purchased goals: their saved money has already left the Save jar
+  // (spent on the item, with any leftover moved to a jar the child chose).
+  const totalSaved = goals.reduce((total, g) => g.purchased ? total : total + g.history.reduce((s, h) => s + h.amount, 0), 0);
   saveJar.balance = totalSaved;
   await dbPutJar(saveJar);
 }
@@ -4726,13 +5099,17 @@ function celebrateJarDeposit(jarIdx, amount) {
   }, 2500);
 }
 
-function showEncouragement(amount) {
-  let idx;
-  do { idx = Math.floor(Math.random() * encouragements.length); } while (idx === lastEncouragementIdx);
-  lastEncouragementIdx = idx;
+function showEncouragement(amount, customMsg) {
   const toast = document.getElementById('encouragementToast');
   const msg = document.getElementById('encouragementMsg');
-  msg.textContent = encouragements[idx];
+  if (customMsg) {
+    msg.textContent = customMsg;
+  } else {
+    let idx;
+    do { idx = Math.floor(Math.random() * encouragements.length); } while (idx === lastEncouragementIdx);
+    lastEncouragementIdx = idx;
+    msg.textContent = encouragements[idx];
+  }
   toast.classList.add('visible');
   setTimeout(() => toast.classList.remove('visible'), 2800);
 }
@@ -4743,7 +5120,9 @@ function lockParent() {
 }
 
 // ---- Celebration ----
+let celebratingGoalId = null;
 function celebrate(goal) {
+  celebratingGoalId = goal.id;
   document.getElementById('celebrationText').textContent = `You saved every penny for your ${goal.name}!`;
   document.getElementById('celebrationAmount').innerHTML = `<svg width="1em" height="1em" viewBox="0 0 24 24" fill="var(--silver-400)" stroke="var(--silver-500)" stroke-width="1.5" style="vertical-align:-0.125em;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> $${fmtNum(goal.goalAmount)} <svg width="1em" height="1em" viewBox="0 0 24 24" fill="var(--silver-400)" stroke="var(--silver-500)" stroke-width="1.5" style="vertical-align:-0.125em;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
   const imgC = document.getElementById('celebrationImage');
@@ -4778,6 +5157,26 @@ function closeCelebration() {
   document.getElementById('celebrationOverlay').classList.remove('active');
   document.getElementById('celebrationStars').innerHTML = '';
   stopConfetti();
+  celebratingGoalId = null;
+}
+
+async function archiveCelebratedGoal() {
+  const id = celebratingGoalId;
+  closeCelebration();
+  if (id) await archiveGoal(id);
+}
+
+// Move a completed goal into the "Achieved" trophy list. The goal keeps its saved
+// amount (money still lives in the Save jar) until the child records a purchase.
+async function archiveGoal(id) {
+  const goal = goals.find(g => g.id === id);
+  if (!goal) return;
+  goal.archived = true;
+  goal.archivedAt = new Date().toISOString();
+  await dbPut(goal);
+  currentGoalId = null;
+  showView('homeView');
+  renderHome();
 }
 
 // ---- Confetti ----
@@ -6530,6 +6929,25 @@ function daysUntil(dateStr) {
   const target = new Date(dateStr + 'T23:59:59');
   const now = new Date();
   return Math.ceil((target - now) / (1000 * 60 * 60 * 24));
+}
+
+// Returns the Monday (local) that starts the week containing the given date.
+function weekStart(dateInput) {
+  const d = new Date(dateInput);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0=Sun..6=Sat
+  d.setDate(d.getDate() - ((day + 6) % 7)); // back up to Monday
+  return d;
+}
+
+// Human label for the week a date belongs to, e.g. "This week", "Last week", or "Week of Jul 6".
+function weekOfLabel(dateInput) {
+  const ws = weekStart(dateInput);
+  const nowWs = weekStart(new Date());
+  const diffWeeks = Math.round((nowWs - ws) / (1000 * 60 * 60 * 24 * 7));
+  if (diffWeeks === 0) return 'This week';
+  if (diffWeeks === 1) return 'Last week';
+  return 'Week of ' + ws.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 // ---- PWA (Demo: disabled) ----
