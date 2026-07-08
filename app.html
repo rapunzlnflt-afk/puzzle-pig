@@ -2917,7 +2917,7 @@ async function submitPin() {
     document.getElementById('app').style.display = '';
     document.getElementById('userSelectScreen').style.display = 'none';
     showView('parentSettingsView');
-    renderParentSettings();
+    renderParentSettings({ force: true });
     return;
   }
 
@@ -3174,7 +3174,7 @@ function showView(viewId) {
     document.getElementById('app').classList.add('no-nav');
     // Close any open overlays/sheets
     document.querySelectorAll('.bottom-sheet, .bottom-sheet-backdrop, .help-panel, .help-panel-backdrop').forEach(el => el.classList.remove('active'));
-    renderParentSettings();
+    renderParentSettings({ force: true });
     window.scrollTo(0, 0);
     return; // skip scroll-to-top below
   }
@@ -4386,8 +4386,21 @@ async function ppShareInvite(code){
   ppFamilyToast(ok ? 'Invite link copied - paste it to your kid' : 'Invite link ready');
 }
 
-async function renderParentSettings() {
+// --- Parent-settings render guards --------------------------------------
+// Root cause of the "pending chores flash / can't tap Approve" bug:
+// renderParentSettings() used to forcePull() on EVERY call, and pullAndMerge()
+// ends with safeRerender() which calls renderParentSettings() again — an
+// infinite render->pull->render loop that rebuilt the DOM many times a second,
+// so taps on Approve/Reject landed on elements that were destroyed mid-tap.
+// Fixes: (1) never re-enter while a render is in flight, (2) forcePull at most
+// once every 8s and NEVER from a safeRerender-triggered pass, (3) skip the
+// whole rebuild while the parent has a kid card expanded or a modal open.
+var _ppParentRendering = false;
+var _ppLastParentPullAt = 0;
+async function renderParentSettings(opts) {
+  opts = opts || {};
   const view = document.getElementById('parentSettingsView');
+  if (!view) return;
 
   // Preserve which kid cards are currently expanded so approve/reject (or a realtime
   // refresh) doesn't collapse the box the parent is actively working in.
@@ -4399,25 +4412,46 @@ async function renderParentSettings() {
     } catch(_) { return []; }
   })();
 
+  // Guard A: don't rebuild the DOM the parent is actively touching. If a kid
+  // card is expanded or the kid modal is open, a background refresh (realtime /
+  // poll) must NOT wipe it out from under the parent's finger. Explicit opens
+  // (opts.force) always render.
+  if (!opts.force){
+    const _modalOpen = !!document.getElementById('pp32KidModal');
+    if (_preservedExpandedKidIds.length > 0 || _modalOpen){
+      // Cards stay as-is; the individual approve/reject handlers refresh in place.
+      return;
+    }
+  }
+
+  // Guard B: never re-enter while a render is already running (overlapping
+  // async calls used to stack up and cause visible flashing).
+  if (_ppParentRendering && !opts.force) return;
+  _ppParentRendering = true;
+  try {
+
   // Safety net: if we're on parent device and the users list looks stale/incomplete
-  // (e.g. IndexedDB has only the kids that ever logged in on this phone), force a
-  // fresh Supabase pull BEFORE rendering. Prevents the "only Daisy shows, Duke
-  // missing" case where the phone's local IDB never saw the second kid.
+  // (e.g. IndexedDB has only the kids that ever logged in on this phone), do a
+  // fresh Supabase pull. THROTTLED to once / 8s and skipped for background
+  // (safeRerender) passes so we never spin the render->pull->render loop.
   try {
     const isParentDev = (localStorage.getItem('pp_role') === 'parent');
-    if (isParentDev && typeof window.ppSync === 'object' && typeof window.ppSync.forcePull === 'function'){
+    const _now = Date.now();
+    const _shouldPull = isParentDev
+      && typeof window.ppSync === 'object'
+      && typeof window.ppSync.forcePull === 'function'
+      && !opts.background
+      && (opts.force || (_now - _ppLastParentPullAt) > 8000);
+    if (_shouldPull){
+      _ppLastParentPullAt = _now;
       // Reload local users from IndexedDB first (in case something wiped `users`)
       if (typeof dbGetAllUsers === 'function'){
         try { users = await dbGetAllUsers(); } catch(_){}
       }
-      console.log('[PuzzlePig parent] renderParentSettings pre-pull; local users=', users.length);
-      // Always do at least one fresh remote pull on parent-settings render.
-      // pullAndMerge merges into _memUsers AND window.users, so this fixes stale lists.
       await window.ppSync.forcePull();
       if (typeof dbGetAllUsers === 'function'){
         try { users = await dbGetAllUsers(); } catch(_){}
       }
-      console.log('[PuzzlePig parent] renderParentSettings post-pull; users=', users.length);
     }
   } catch(e){ console.warn('[PuzzlePig parent] pre-render pull failed', e); }
 
@@ -4428,6 +4462,22 @@ async function renderParentSettings() {
   allChoresGlobal.forEach(c => { if (!c.assignedTo) c.assignedTo = c.userId ? [c.userId] : []; });
   const allChoreLogsGlobal = await dbGetAllChoreLogs();
   const pendingLogsAll = allChoreLogsGlobal.filter(cl => cl.status === 'pending');
+
+  // Guard C: skip the innerHTML rebuild on a BACKGROUND refresh when nothing that
+  // affects the rendered output actually changed. The parent polls every 5s; without
+  // this, the whole page rebuilt every 5s and could interrupt a tap on Approve/Reject.
+  // A forced render (explicit open / approve / reject) always rebuilds.
+  try {
+    const _sig = JSON.stringify({
+      u: users.map(u => [u.id, u.name, u.total_saved, u.device_claimed_at]),
+      c: allChoresGlobal.map(c => [c.id, c.name, c.amount, c.recurring, (c.assignedTo||[]).join(','), (c.choreDays||[]).join(',')]),
+      p: pendingLogsAll.map(l => [l.id, l.userId, l.choreId, l.status]).sort()
+    });
+    if (opts.background && !opts.force && view.innerHTML && window._ppParentSig === _sig){
+      return; // identical content — leave the DOM (and any in-progress tap) untouched
+    }
+    window._ppParentSig = _sig;
+  } catch(_){}
 
   const isParentDevice = (function(){
     try { return localStorage.getItem('pp_role') === 'parent'; } catch(_) { return false; }
@@ -4630,6 +4680,10 @@ async function renderParentSettings() {
       if (el) el.classList.add('expanded');
     });
   } catch(_) {}
+
+  } finally {
+    _ppParentRendering = false;
+  }
 }
 
 // v=32: kid card expand/collapse + 3-dot menu
@@ -4752,7 +4806,7 @@ async function unlinkKidDeviceFromParent(kidId, kidName){
   const res = await window.ppSync.unlinkKidDevice(kidId);
   if (res && res.ok){
     alert('Phone unlinked. ' + (kidName || 'The kid') + "'s device will return to the picker.");
-    try { await renderParentSettings(); } catch(_){}
+    try { await renderParentSettings({ force: true }); } catch(_){}
   } else {
     alert('Could not unlink: ' + ((res && res.error) || 'unknown error'));
   }
@@ -4772,7 +4826,7 @@ async function setKidPinFromParent(kidId){
   u.pin = trimmed;
   try {
     if (typeof dbPutUser === 'function') await dbPutUser(u);
-    await renderParentSettings();
+    await renderParentSettings({ force: true });
   } catch(e){
     console.warn('[PuzzlePig] setKidPinFromParent failed', e);
     alert('Could not save PIN. Please try again.');
@@ -4832,7 +4886,9 @@ async function approveChoreFromParent(logId, targetJarId) {
       await creditGoalsForUser(chore.amount, now, note, userGoals);
     }
   }
-  await renderParentSettings();
+  // force:true — this is an explicit parent action, so rebuild even though the
+  // kid card is expanded (the approved chore must drop off the pending list).
+  await renderParentSettings({ force: true });
   restoreJarSelections(jarSelections);
 }
 
@@ -4844,7 +4900,7 @@ async function rejectChoreFromParent(logId) {
   cl.status = 'rejected';
   await dbPutChoreLog(cl);
   updateChoresBadge();
-  await renderParentSettings();
+  await renderParentSettings({ force: true });
   restoreJarSelections(jarSelections);
 }
 
@@ -4870,7 +4926,7 @@ async function toggleChoreUser(choreId, userId, isChecked) {
 
 async function deleteChoreFromParent(choreId) {
   await doDeleteChore(choreId);
-  renderParentSettings();
+  renderParentSettings({ force: true });
 }
 
 function openAddChoreFromParent() {
@@ -4964,7 +5020,7 @@ async function parentJarDoAction(jarId, userId, action) {
   }
   await dbPutJar(jar);
   document.getElementById('parentJarActionForm')?.remove();
-  renderParentSettings();
+  renderParentSettings({ force: true });
 }
 
 function addUserFromParent() {
@@ -4990,7 +5046,7 @@ function addUserFromParent() {
       style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--silver-300,#D8D8DE);border-radius:8px;font-size:0.95rem;"
       onkeydown="if(event.key==='Enter')saveUserFromParent()">
     <div style="display:flex;gap:8px;margin-top:10px;">
-      <button class="btn btn-secondary btn-sm" onclick="renderParentSettings()" style="flex:1;">Cancel</button>
+      <button class="btn btn-secondary btn-sm" onclick="renderParentSettings({ force: true })" style="flex:1;">Cancel</button>
       <button class="btn btn-primary btn-sm" onclick="saveUserFromParent()" style="flex:1;">Add</button>
     </div>
   `;
@@ -5008,14 +5064,14 @@ async function saveUserFromParent() {
   await dbPutUser(user);
   await autoCreateJarsForUser(user.id);
   users = await dbGetAllUsers();
-  renderParentSettings();
+  renderParentSettings({ force: true });
 }
 
 async function removeUserFromParent(userId) {
   if (users.length <= 1) return;
   if (confirm('Remove this user and all their data?')) {
     await doRemoveUser(userId);
-    await renderParentSettings();
+    await renderParentSettings({ force: true });
   }
 }
 
@@ -6029,7 +6085,7 @@ async function confirmTransfer() {
   jarTxs.push(txOut, txIn);
   closeTransferModal();
   if (document.getElementById('parentSettingsView').classList.contains('active')) {
-    renderParentSettings();
+    renderParentSettings({ force: true });
   } else {
     renderJarsView();
   }
@@ -6414,7 +6470,7 @@ function saveChore() {
   closeAddChoreModal();
   if (window._choreFromParent) {
     window._choreFromParent = false;
-    doSaveChore().then(() => renderParentSettings());
+    doSaveChore().then(() => renderParentSettings({ force: true }));
   } else {
     requestPinFor('save-chore');
   }
@@ -7077,7 +7133,9 @@ init();
       const choresView = document.getElementById('choresView');
       if (choresView && choresView.classList.contains('active') && typeof renderChoresView === 'function') renderChoresView();
       const settingsView = document.getElementById('parentSettingsView') || document.getElementById('settingsView');
-      if (settingsView && settingsView.classList.contains('active') && typeof renderParentSettings === 'function') renderParentSettings();
+      // background:true => no forcePull (avoids the render->pull->render loop) and
+      // the render is skipped entirely if the parent has a card expanded / modal open.
+      if (settingsView && settingsView.classList.contains('active') && typeof renderParentSettings === 'function') renderParentSettings({ background: true });
     } catch(e){ console.warn('[PuzzlePig sync] re-render error', e); }
   }
 
@@ -7567,19 +7625,34 @@ init();
   // Shows: RT channel state | seconds since last pull | pull count | pending count.
   // Tap to force an immediate pull. Diagnostic aid so we can see from the phone
   // whether the sync layer is actually running.
+  // The badge has three states, remembered in localStorage 'pp_sync_badge_mode':
+  //   'full'  — full diagnostic pill (RT / pull / pending / build)  [default]
+  //   'dot'   — collapsed to a tiny status dot in the corner (minimized)
+  //   'off'   — completely hidden
+  // Tap the dot to expand; tap the pill body to force a sync; use the small
+  // buttons to minimize or hide. This turns a developer-only diagnostic into
+  // something a parent can tuck away.
   let _badgeInterval = null;
+  function _getBadgeMode(){
+    try { return localStorage.getItem('pp_sync_badge_mode') || 'full'; } catch(_){ return 'full'; }
+  }
+  function _setBadgeMode(m){
+    try { localStorage.setItem('pp_sync_badge_mode', m); } catch(_){}
+    updateSyncBadge();
+  }
+  try { window.ppSetSyncBadgeMode = _setBadgeMode; } catch(_){}
+  function _forceSyncNow(){
+    const b = document.getElementById('pp-sync-badge');
+    pullAndMerge().then(() => { _lastPullAt = Date.now(); _pullCount++; updateSyncBadge(); })
+                  .catch(err => { if (b) b.title = 'pull err: ' + (err && err.message || err); });
+  }
+  try { window._ppForceSyncNow = _forceSyncNow; } catch(_){}
   function startSyncBadge(){
     if (_badgeInterval) return;
     if (!document.getElementById('pp-sync-badge')){
       const b = document.createElement('div');
       b.id = 'pp-sync-badge';
-      b.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:9999;background:rgba(30,30,40,0.85);color:#fff;font:11px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;padding:6px 10px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.25);cursor:pointer;user-select:none;max-width:220px;';
-      b.title = 'Tap to force sync';
-      b.onclick = function(){
-        b.style.background = 'rgba(90,60,150,0.95)';
-        pullAndMerge().then(() => { _lastPullAt = Date.now(); _pullCount++; updateSyncBadge(); b.style.background='rgba(30,30,40,0.85)'; })
-                      .catch(err => { b.textContent = 'pull err: ' + (err && err.message || err); });
-      };
+      b.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:9999;color:#fff;font:11px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.25);user-select:none;';
       document.body.appendChild(b);
     }
     _badgeInterval = setInterval(updateSyncBadge, 1000);
@@ -7588,7 +7661,28 @@ init();
   function updateSyncBadge(){
     const b = document.getElementById('pp-sync-badge');
     if (!b) return;
+    const mode = _getBadgeMode();
     const rtState = (realtimeChannel && realtimeChannel.state) || 'none';
+    // Color-code: green if healthy, orange if realtime dead but polling, red if stalled.
+    let bg = 'rgba(30,120,60,0.92)'; // green
+    if (rtState !== 'joined') bg = 'rgba(200,120,20,0.92)'; // orange
+    if (_lastPullAt && (Date.now() - _lastPullAt) > 15000) bg = 'rgba(180,40,40,0.92)'; // red
+
+    if (mode === 'off'){ b.style.display = 'none'; return; }
+    b.style.display = '';
+
+    if (mode === 'dot'){
+      // Tiny status dot; tap to expand back to the full pill.
+      b.style.background = 'transparent';
+      b.style.boxShadow = 'none';
+      b.style.padding = '0';
+      b.innerHTML = '<span title="Sync status — tap to expand" style="display:block;width:14px;height:14px;border-radius:50%;background:' + bg + ';box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;"></span>';
+      const dot = b.firstChild;
+      if (dot) dot.onclick = function(e){ e.stopPropagation(); _setBadgeMode('full'); };
+      return;
+    }
+
+    // full pill
     const secs = _lastPullAt ? Math.round((Date.now() - _lastPullAt) / 1000) : '—';
     let pending = 0;
     try {
@@ -7597,12 +7691,19 @@ init();
       }
     } catch(_){}
     const build = (typeof window.__PP_BUILD__ === 'string') ? window.__PP_BUILD__.slice(-3) : '?';
-    b.innerHTML = 'RT:<b>' + rtState + '</b> · pull ' + secs + 's · #' + _pullCount + ' · pending:' + pending + ' · <b>' + build + '</b>';
-    // Color-code: green if healthy, orange if realtime dead but polling, red if stalled.
-    let bg = 'rgba(30,120,60,0.92)'; // green
-    if (rtState !== 'joined') bg = 'rgba(200,120,20,0.92)'; // orange
-    if (_lastPullAt && (Date.now() - _lastPullAt) > 15000) bg = 'rgba(180,40,40,0.92)'; // red
     b.style.background = bg;
+    b.style.boxShadow = '0 2px 8px rgba(0,0,0,0.25)';
+    b.style.padding = '6px 8px';
+    b.innerHTML =
+      '<span id="pp-sync-body" title="Tap to sync now" style="cursor:pointer;">RT:<b>' + rtState + '</b> · pull ' + secs + 's · #' + _pullCount + ' · pending:' + pending + ' · <b>' + build + '</b></span>' +
+      '<button id="pp-sync-min" title="Minimize" style="margin-left:8px;background:rgba(255,255,255,0.18);border:none;color:#fff;border-radius:6px;font-size:11px;line-height:1;padding:3px 6px;cursor:pointer;">–</button>' +
+      '<button id="pp-sync-hide" title="Hide" style="margin-left:4px;background:rgba(255,255,255,0.18);border:none;color:#fff;border-radius:6px;font-size:11px;line-height:1;padding:3px 6px;cursor:pointer;">×</button>';
+    const body = b.querySelector('#pp-sync-body');
+    if (body) body.onclick = function(e){ e.stopPropagation(); _forceSyncNow(); };
+    const minB = b.querySelector('#pp-sync-min');
+    if (minB) minB.onclick = function(e){ e.stopPropagation(); _setBadgeMode('dot'); };
+    const hideB = b.querySelector('#pp-sync-hide');
+    if (hideB) hideB.onclick = function(e){ e.stopPropagation(); _setBadgeMode('off'); };
   }
 
   // When the tab becomes visible again (mobile: user re-opened the app,
@@ -7717,8 +7818,10 @@ init();
       // Parent: pending toast disabled — parent sees pending chores inline on settings view.
       // (Previously called showParentPendingToast() here; removed per user request.)
       if (role === 'parent' && cl.status === 'pending' && wasNew && !recentlyPushed.has(cl.id)){
-        // Re-render parent settings so the new pending chore appears immediately
-        try { if (typeof renderParentSettings === 'function') renderParentSettings(); } catch(_){}
+        // Re-render parent settings so the new pending chore appears immediately.
+        // background:true respects the "skip while a card is expanded" guard so it
+        // never wipes the box the parent is mid-tap on.
+        try { if (typeof renderParentSettings === 'function') renderParentSettings({ background: true }); } catch(_){}
       }
       // Kid device: credit jar when a log transitions to 'approved'
       if (role === 'child' && cl.status === 'approved' && (!prev || prev.status !== 'approved')){
@@ -7829,7 +7932,7 @@ init();
       toast.style.display = 'none';
       try {
         if (typeof showView === 'function') showView('parentSettingsView');
-        else if (typeof renderParentSettings === 'function') renderParentSettings();
+        else if (typeof renderParentSettings === 'function') renderParentSettings({ force: true });
       } catch(_){}
     };
   }
@@ -8393,7 +8496,7 @@ init();
           console.log('[PuzzlePig parent] routed to parentSettingsView, users=', (window.users && window.users.length), 'innerHTML.length=', (ps ? ps.innerHTML.length : 'n/a'));
           // EXPLICIT awaited render with full error logging — showView fires it async without catch
           if (typeof renderParentSettings === 'function'){
-            Promise.resolve().then(() => renderParentSettings())
+            Promise.resolve().then(() => renderParentSettings({ force: true }))
               .then(() => {
                 const ps2 = document.getElementById('parentSettingsView');
                 console.log('[PuzzlePig parent] renderParentSettings OK, innerHTML.length=', ps2 ? ps2.innerHTML.length : 'n/a');
