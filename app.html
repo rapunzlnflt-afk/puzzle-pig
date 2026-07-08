@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-08T04:55Z-v49';</script>
+<script>window.__PP_BUILD__='2026-07-08T05:20Z-v51';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -2755,6 +2755,63 @@ function toggleManageUsers() {
   }
 }
 
+// v=50: Reusable, retrying cloud-ledger catch-up. Reads the authoritative cloud total for a
+// user and, if this device's non-restored jar balances total LESS than the cloud, restores the
+// difference into the Spend jar as an idempotent 'restore' transaction. Retries for a few
+// seconds so it works even if the sync layer (which owns familyId/sb) hasn't finished joining
+// the family yet at the moment we're called. Safe to call from any sign-in entry path.
+async function ppLedgerCatchUp(id){
+  if (!id) return;
+  const getCloud = (window.ppSync && typeof window.ppSync.getCloudTotal === 'function')
+    ? window.ppSync.getCloudTotal : null;
+  if (!getCloud){ console.warn('[PuzzlePig] catch-up: ppSync.getCloudTotal missing'); return; }
+  // Poll the bridge for up to ~6s: getCloudTotal returns null until familyId+sb are ready.
+  let cloudTotal = null;
+  for (let i = 0; i < 12; i++){
+    try { cloudTotal = await getCloud(id); } catch(_){ cloudTotal = null; }
+    if (cloudTotal != null) break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  if (cloudTotal == null){ console.warn('[PuzzlePig] catch-up: cloud total unavailable (sync not ready) for', id); return; }
+  // Read this user's jars + txs fresh from the DB so the helper is correct no matter who calls it.
+  const allJ = await dbGetAllJars();
+  const myJars = allJ.filter(j => j.userId === id);
+  const allTx = await dbGetAllJarTxs();
+  const myTx = allTx.filter(t => t.userId === id);
+  const jarSum = Math.round(myJars.reduce((s, j) => s + (Number(j.balance)||0), 0) * 100) / 100;
+  const priorRestore = Math.round(myTx.filter(t => t && t.type === 'restore')
+    .reduce((s, t) => s + (Number(t.amount)||0), 0) * 100) / 100;
+  const nonRestoredLocal = Math.round((jarSum - priorRestore) * 100) / 100;
+  const desiredRestore = Math.round((cloudTotal - nonRestoredLocal) * 100) / 100;
+  const delta = Math.round((desiredRestore - priorRestore) * 100) / 100;
+  console.log('[PuzzlePig] catch-up eval for', id, '| cloud', cloudTotal, '| jarSum', jarSum, '| priorRestore', priorRestore, '| delta', delta);
+  if (delta <= 0.005) return; // device already at/above cloud; nothing to restore
+  const spendJar = myJars.find(j => j.type === 'spend') || myJars.find(j => j.type === 'save') || myJars[0];
+  if (!spendJar){ console.warn('[PuzzlePig] catch-up: no jar to restore into for', id); return; }
+  spendJar.balance = Math.round(((spendJar.balance||0) + delta) * 100) / 100;
+  await dbPutJar(spendJar);
+  const nowIso = new Date().toISOString();
+  const rtx = {
+    id: 'jartx_restore_' + id + '_' + Date.now(),
+    userId: id, jarId: spendJar.id, amount: delta,
+    type: 'restore', note: 'Restored earnings (from cloud record)',
+    date: nowIso.split('T')[0], createdAt: nowIso,
+  };
+  await dbPutJarTx(rtx);
+  // If the user being restored is the one currently loaded, mirror into the live arrays
+  // and refresh the UI so the balance shows immediately.
+  try {
+    if (typeof currentUserId !== 'undefined' && currentUserId === id){
+      if (Array.isArray(jars)){ const lj = jars.find(j => j.id === spendJar.id); if (lj) lj.balance = spendJar.balance; }
+      if (Array.isArray(jarTxs)) jarTxs.push(rtx);
+      try { if (typeof renderJarsView === 'function') renderJarsView(); } catch(_){}
+      try { if (typeof updateJarDisplays === 'function') updateJarDisplays(); } catch(_){}
+    }
+  } catch(_){}
+  console.log('[PuzzlePig] Ledger catch-up: added', delta, '→ Spend jar; device now matches cloud total', cloudTotal);
+}
+try { window.ppLedgerCatchUp = ppLedgerCatchUp; } catch(_){}
+
 async function selectUser(id) {
   currentUserId = id;
   parentUnlocked = false; // Always require PIN when entering as a kid
@@ -2799,43 +2856,9 @@ async function selectUser(id) {
   // Then we make the single Spend-jar 'restore' entry equal desiredRestore. Because the
   // restore txs live and die with the jar data, a wipe removes them too and the full amount
   // is restored again automatically — no orphaned localStorage flag can strand the balance.
-  // NOTE: `sb` and `familyId` live in the sync <script> block and are NOT in scope here,
-  // so we read the cloud total through the exposed window.ppSync.getCloudTotal() bridge.
-  try {
-    const getCloud = (window.ppSync && typeof window.ppSync.getCloudTotal === 'function')
-      ? window.ppSync.getCloudTotal : null;
-    if (getCloud) {
-      const cloudTotal = await getCloud(id);
-      if (cloudTotal != null) {
-        const jarSum = Math.round(jars.reduce((s, j) => s + (Number(j.balance)||0), 0) * 100) / 100;
-        const priorRestore = Math.round(
-          (jarTxs || []).filter(t => t && t.type === 'restore')
-            .reduce((s, t) => s + (Number(t.amount)||0), 0) * 100) / 100;
-        const nonRestoredLocal = Math.round((jarSum - priorRestore) * 100) / 100;
-        const desiredRestore = Math.round((cloudTotal - nonRestoredLocal) * 100) / 100;
-        const delta = Math.round((desiredRestore - priorRestore) * 100) / 100;
-        if (delta > 0.005) {
-          let spendJar = jars.find(j => j.type === 'spend') || jars.find(j => j.type === 'save') || jars[0];
-          if (spendJar) {
-            spendJar.balance = Math.round(((spendJar.balance||0) + delta) * 100) / 100;
-            await dbPutJar(spendJar);
-            const nowIso = new Date().toISOString();
-            const rtx = {
-              id: 'jartx_restore_' + id + '_' + Date.now(),
-              userId: id, jarId: spendJar.id, amount: delta,
-              type: 'restore', note: 'Restored earnings (from cloud record)',
-              date: nowIso.split('T')[0], createdAt: nowIso,
-            };
-            await dbPutJarTx(rtx);
-            try { jarTxs.push(rtx); } catch(_){}
-            console.log('[PuzzlePig] Ledger catch-up: added', delta, '→ Spend jar; device now matches cloud total', cloudTotal);
-          }
-        }
-      }
-    } else {
-      console.warn('[PuzzlePig] ledger catch-up: ppSync.getCloudTotal not ready yet');
-    }
-  } catch(e){ console.warn('[PuzzlePig] ledger catch-up skipped', e); }
+  // Run the cloud-ledger catch-up (defined below as a reusable, retrying helper so it works
+  // from every entry path: parent previewing a kid card AND a kid signing in on their device).
+  try { await ppLedgerCatchUp(id); } catch(e){ console.warn('[PuzzlePig] ledger catch-up skipped', e); }
 
   // v=40: backfill total_saved on every sign-in so parent always sees current jar total
   try {
@@ -7719,9 +7742,27 @@ init();
       pullAndMerge().then(() => { _lastPullAt = Date.now(); _pullCount++; updateSyncBadge(); })
                     .catch(err => console.warn('[sync] poll failed', err));
     }, intervalMs);
-    // Start updating the on-screen sync badge every second on parent devices.
-    if (role === 'parent') startSyncBadge();
+    // Start updating the on-screen sync badge every second on parent devices,
+    // but ONLY when debug mode is enabled (?debug=1 or localStorage pp_debug='1').
+    // Normal customers never see the RT diagnostic pill.
+    if (role === 'parent' && _ppDebugEnabled()) startSyncBadge();
   }
+
+  // Debug gate for the RT diagnostic badge. Enable with ?debug=1 in the URL
+  // (persists to localStorage so it survives reloads/PWA navigation) or by
+  // setting localStorage 'pp_debug' = '1'. Disable with ?debug=0.
+  function _ppDebugEnabled(){
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (p.has('debug')) {
+        const on = p.get('debug') !== '0';
+        try { localStorage.setItem('pp_debug', on ? '1' : '0'); } catch(_){}
+        return on;
+      }
+      return localStorage.getItem('pp_debug') === '1';
+    } catch(_){ return false; }
+  }
+  try { window._ppDebugEnabled = _ppDebugEnabled; } catch(_){}
 
   // ---- Visible sync-status badge (parent only) ------------------------------
   // Shows: RT channel state | seconds since last pull | pull count | pending count.
