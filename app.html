@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T08:50Z-v70';</script>
+<script>window.__PP_BUILD__='2026-07-11T09:10Z-v71';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -822,17 +822,28 @@ a { color: inherit; text-decoration: none; }
 /* ===== v=32 PARENT REDESIGN ===== */
 .pp32-page { padding: var(--space-3); max-width: 1100px; margin: 0 auto; }
 @media (min-width: 720px) { .pp32-page { padding: var(--space-4) var(--space-5); } }
-.pp32-pagehead { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin-bottom: var(--space-4); }
-.pp32-pagehead h2 { margin:0; font-size:1.25rem; }
-.pp32-section-label { font-size:0.72rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; display:flex; align-items:center; justify-content:space-between; margin: var(--space-3) 0 var(--space-2); }
+/* v71 clean+minimal parent redesign */
+.pp32-pagehead { display:flex; align-items:center; gap:var(--space-3); margin: var(--space-3) 0 var(--space-6); }
+.pp32-pagehead-titles { flex:1; min-width:0; }
+.pp32-pagehead h2 { margin:0; font-family: var(--font-display); font-size:1.6rem; font-weight:700; letter-spacing:-0.01em; color: var(--text); line-height:1.15; }
+.pp32-pagehead-sub { margin:2px 0 0; font-size:0.85rem; color: var(--text-muted); font-weight:500; }
+.pp32-pagehead-spacer { width:22px; flex-shrink:0; }
+.pp32-back-btn { background:none; border:none; cursor:pointer; padding:6px; margin-left:-6px; color:var(--purple-600); border-radius:8px; display:inline-flex; }
+.pp32-back-btn:hover { background: var(--purple-50, #F9F7FC); }
+.pp32-section-label { font-size:0.7rem; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.8px; display:flex; align-items:center; justify-content:space-between; margin: var(--space-5) 0 var(--space-3); }
+.pp32-section-label-text { display:inline-flex; align-items:center; gap:8px; }
+.pp32-count-pill { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; border-radius:var(--radius-full); background: var(--purple-100, #F0ECF7); color: var(--purple-700, #6A4C96); font-size:0.72rem; font-weight:700; letter-spacing:0; }
+.pp32-section-action { font-size:0.8rem; color: var(--purple-600, #7B5AA8); text-decoration:none; font-weight:600; cursor:pointer; letter-spacing:0; text-transform:none; padding:4px 10px; border-radius:var(--radius-full); border:1px solid var(--purple-200,#E2DAF0); transition: background 0.15s, border-color 0.15s; }
+.pp32-section-action:hover { background: var(--purple-50,#F9F7FC); border-color: var(--purple-300,#CBBFE5); }
 /* v66.1: Chores as its own card so the collapsed header is easy to see and tap. */
-.pp32-chores-card { background: var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow: var(--shadow-sm); overflow:hidden; margin: var(--space-3) 0; }
-.pp32-chores-card-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; cursor:pointer; user-select:none; background: linear-gradient(180deg, rgba(92,66,135,0.06), rgba(92,66,135,0.02)); border-bottom:1px solid var(--border); transition: background 0.15s; }
+.pp32-chores-card { background: var(--surface); border:1px solid var(--border); border-radius:16px; box-shadow: var(--shadow-sm); overflow:hidden; margin: var(--space-3) 0; }
+.pp32-chores-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 18px; cursor:pointer; user-select:none; background: var(--surface); border-bottom:1px solid var(--border); transition: background 0.15s; }
 .pp32-chores-card-head.collapsed { border-bottom-color: transparent; }
-.pp32-chores-card-head:hover { background: rgba(92,66,135,0.10); }
-.pp32-chores-card-title { font-size:0.98rem; font-weight:700; color: var(--purple-700, #5C4287); display:inline-flex; align-items:center; }
-.pp32-chores-card-head .chore-collapse-chevron { transition: transform 0.18s; color: var(--purple-600,#6D28D9); }
-.pp32-chores-card .pp32-chores-box { padding: 4px 12px 10px; }
+.pp32-chores-card-head:hover { background: var(--purple-50, #F9F7FC); }
+.pp32-chores-card-title { font-size:1rem; font-weight:700; color: var(--text); display:inline-flex; align-items:center; letter-spacing:-0.01em; }
+.pp32-chores-card-title svg { color: var(--purple-500, #8E6BBF); }
+.pp32-chores-card-head .chore-collapse-chevron { transition: transform 0.18s; color: var(--text-faint); }
+.pp32-chores-card .pp32-chores-box { padding: 4px 12px 10px; border:none; box-shadow:none; border-radius:0; }
 .pp32-section-label a { font-size:0.78rem; color: var(--purple-600, #6D28D9); text-decoration:none; font-weight:600; cursor:pointer; }
 /* Family code box (parent settings) */
 .pp-family-code-box { display:flex; flex-wrap:wrap; align-items:center; gap:12px; justify-content:space-between; background:#F5F4F1; border:1px solid rgba(92,66,135,0.18); border-radius:14px; padding:14px 16px; margin-bottom:var(--space-3); }
@@ -854,14 +865,14 @@ a { color: inherit; text-decoration: none; }
 .pp32-children-grid { display:grid; grid-template-columns: 1fr; gap: var(--space-3); }
 @media (min-width: 720px) { .pp32-children-grid { grid-template-columns: 1fr 1fr; } }
 @media (min-width: 1024px) { .pp32-children-grid { grid-template-columns: 1fr 1fr 1fr; } }
-.pp32-kid { background: var(--surface); border:1px solid var(--border); border-radius: 14px; overflow:visible; box-shadow: var(--shadow-sm); position:relative; }
-.pp32-kid-head { display:flex; align-items:center; gap:10px; padding:12px; cursor:pointer; }
+.pp32-kid { background: var(--surface); border:1px solid var(--border); border-radius: 16px; overflow:visible; box-shadow: var(--shadow-sm); position:relative; transition: border-color 0.15s, box-shadow 0.15s; }
+.pp32-kid-head { display:flex; align-items:center; gap:11px; padding:14px; cursor:pointer; border-radius:16px; }
 .pp32-kid-avatar { width:38px; height:38px; border-radius:50%; color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:0.95rem; }
 .pp32-kid-main { flex:1; min-width:0; }
 .pp32-kid-name { font-weight:700; font-size:0.95rem; line-height:1.2; }
 .pp32-kid-meta { display:flex; align-items:center; gap:6px; margin-top:3px; flex-wrap:wrap; width:100%; }
 .pp32-kid-meta > span { font-size:0.72rem; font-weight:600; padding:3px 10px; border-radius:10px; border:1px solid transparent; line-height:1.2; display:inline-flex; align-items:center; }
-.pp32-pill-earned { background:#DCFCE7; color:#15803D; border-color:#BBF7D0; }
+.pp32-pill-earned { background: var(--purple-50, #F9F7FC); color: var(--purple-700, #6A4C96); border-color: var(--purple-200, #E2DAF0); font-weight:700; }
 .pp32-pill-linked { background:#ECFDF5; color:#047857; border-color:#A7F3D0; margin-left:auto; }
 .pp32-pill-unlinked { background:#F3F4F6; color:#6B7280; border-color:#E5E7EB; margin-left:auto; }
 .pp32-pill-pending { background:#FED7AA; color:#C2410C; font-weight:700; border-color:#FDBA74; }
@@ -900,15 +911,15 @@ a { color: inherit; text-decoration: none; }
 .pp32-icon-btn.danger:hover { background: #FEE2E2; color: #DC2626; }
 .pp32-chore-footer { padding:10px 12px; display:flex; justify-content:space-between; align-items:center; background: var(--silver-50, #FAFAFA); font-size:0.78rem; color: var(--text-muted); }
 .pp32-chore-footer a { color: var(--purple-600, #6D28D9); font-weight:600; cursor:pointer; text-decoration:none; }
-.pp32-pin-row { display:flex; align-items:center; gap:10px; padding:14px; background:var(--surface); border:1px solid var(--border); border-radius:12px; margin-top:var(--space-3); cursor:pointer; }
-.pp32-pin-row:hover { background: var(--silver-50, #FAFAFA); }
-.pp32-pin-icon { width:36px; height:36px; border-radius:8px; background:var(--purple-100, #EDE9FE); color:var(--purple-600, #6D28D9); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.pp32-pin-row { display:flex; align-items:center; gap:12px; padding:16px; background:var(--surface); border:1px solid var(--border); border-radius:16px; margin-top:var(--space-3); cursor:pointer; box-shadow: var(--shadow-sm); transition: border-color 0.15s, background 0.15s; }
+.pp32-pin-row:hover { background: var(--purple-50, #F9F7FC); border-color: var(--purple-200, #E2DAF0); }
+.pp32-pin-icon { width:40px; height:40px; border-radius:10px; background:var(--purple-100, #F0ECF7); color:var(--purple-600, #7B5AA8); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .pp32-pin-text { flex:1; }
-.pp32-pin-title { font-weight:600; font-size:0.9rem; }
-.pp32-pin-sub { font-size:0.75rem; color:var(--text-muted); margin-top:1px; }
+.pp32-pin-title { font-weight:600; font-size:0.92rem; color: var(--text); }
+.pp32-pin-sub { font-size:0.78rem; color:var(--text-muted); margin-top:2px; }
 /* On desktop: child cards stay COLLAPSED; clicking opens a modal */
 @media (min-width: 720px) { .pp32-kid .pp32-kid-body { display:none; } .pp32-kid-head { padding: 10px 12px; } .pp32-kid { cursor:pointer; transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s; } .pp32-kid:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(124,58,237,0.12); border-color: var(--purple-500, #7C3AED); } .pp32-kid::after { content: 'Tap to manage'; position:absolute; bottom:6px; left:0; right:0; text-align:center; font-size:0.7rem; color: var(--text-muted); letter-spacing:0.02em; pointer-events:none; opacity:0.75; } .pp32-kid-head { padding-bottom: 22px; } }
-.pp32-kid-head:hover { background: var(--silver-50, #FAFAFA); }
+.pp32-kid-head:hover { background: var(--purple-50, #F9F7FC); }
 /* Desktop chore column headers */
 .pp32-chore-headers { display:none; padding: 8px 12px; background: var(--silver-50, #FAFAFA); border-bottom: 1px solid var(--border); font-size: 0.68rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; gap: 10px; align-items:center; }
 @media (min-width: 720px) { .pp32-chore-headers { display:flex; } }
@@ -4802,25 +4813,29 @@ async function renderParentSettings(opts) {
   view.innerHTML = `
     <div class="pp32-page">
       <div class="pp32-pagehead">
-        ${isParentDevice ? '<div></div>' : `<button onclick="closeParentSettings()" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--purple-600);">
+        ${isParentDevice ? '' : `<button class="pp32-back-btn" onclick="closeParentSettings()" aria-label="Back">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
         </button>`}
-        <h2>Parent Settings</h2>
-        <div style="width:30px;"></div>
+        <div class="pp32-pagehead-titles">
+          <h2>Parent Settings</h2>
+          <p class="pp32-pagehead-sub">Manage your family</p>
+        </div>
+        <div class="pp32-pagehead-spacer"></div>
       </div>
 
       <div class="pp32-section-label">
-        <span>Children${users.length > 0 ? ' ('+users.length+')' : ''}</span>
-        ${users.length > 0 ? '<a onclick="addUserFromParent()">+ Add child</a>' : ''}
+        <span class="pp32-section-label-text">Children${users.length > 0 ? '<span class="pp32-count-pill">'+users.length+'</span>' : ''}</span>
+        ${users.length > 0 ? '<a class="pp32-section-action" onclick="addUserFromParent()">+ Add child</a>' : ''}
       </div>
       <div class="pp32-children-grid">
         ${noChildrenHTML}${childCards}
       </div>
 
+      <div class="pp32-section-label"><span class="pp32-section-label-text">Chores</span></div>
       <div class="pp32-chores-card">
       <div class="pp32-chores-card-head chore-collapse-toggle${ppIsChoreSectionCollapsed('parentChores') ? ' collapsed' : ''}" onclick="ppToggleChoreSection('parentChores', this)">
         <span class="pp32-chores-card-title">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px;margin-right:6px;"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12l2 2 4-4"/></svg>Chores${allChoresGlobal.length > 0 ? ' ('+allChoresGlobal.length+')' : ''}</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px;margin-right:6px;"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12l2 2 4-4"/></svg>All chores${allChoresGlobal.length > 0 ? '<span class="pp32-count-pill" style="margin-left:8px;">'+allChoresGlobal.length+'</span>' : ''}</span>
         ${PP_CHEVRON_SVG}
       </div>
       <div class="pp32-chores-box chore-collapse-body${ppIsChoreSectionCollapsed('parentChores') ? ' collapsed' : ''}">
@@ -4847,6 +4862,8 @@ async function renderParentSettings(opts) {
         </div>
       </div>
       </div>
+
+      <div class="pp32-section-label"><span class="pp32-section-label-text">Family &amp; security</span></div>
 
       ${(function(){
         var _code = '';
@@ -5040,7 +5057,6 @@ async function pp32BuildKidHistoryHTML(userId, bare){
       (remote || []).forEach(t => { if (t && t.id && !byId[t.id]) byId[t.id] = t; });
     } else { _diag.remoteErr = 'no fetch fn'; }
   } catch(e){ _diag.remoteErr = 'remoteEx:'+e; }
-  try { console.log('[PuzzlePig] history diag', JSON.stringify(_diag)); } catch(_){}
   txs = Object.values(byId);
   txs.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
   const shown = txs.slice(0, 50);
