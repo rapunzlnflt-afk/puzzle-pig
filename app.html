@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T06:30Z-v63';</script>
+<script>window.__PP_BUILD__='2026-07-11T06:45Z-v64';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -8275,15 +8275,12 @@ init();
       if (typeof renderHome === 'function') renderHome();
       if (typeof renderPuzzle === 'function' && typeof currentGoalId !== 'undefined' && currentGoalId) renderPuzzle();
     } catch(_){}
-    // v63: guarantee the goal catches up to the Save-jar balance on EVERY approval,
-    // no matter how it arrives. The inline goal credit above can silently fail or
-    // race; this add-only top-up closes any remaining goal-vs-jar gap. Idempotent:
-    // once goal == jar it does nothing, so it can never double-count.
-    try { if (typeof topUpGoalsToJarBalance === 'function') await topUpGoalsToJarBalance(); } catch(_){}
-    try {
-      if (typeof renderHome === 'function') renderHome();
-      if (typeof renderPuzzle === 'function' && typeof currentGoalId !== 'undefined' && currentGoalId) renderPuzzle();
-    } catch(_){}
+    // v64: DO NOT run topUpGoalsToJarBalance() here. The inline creditGoalsForUser
+    // above already credits the goal by exactly `amount`. Running the balance-based
+    // top-up right after would see jar (already +amount) vs goal (already +amount)
+    // with a timing gap and DOUBLE-credit the goal. The top-up is a boot/sync-only
+    // safety net for logs whose inline credit never ran; it must never chase a
+    // credit that just happened in this same function. (v63 regression fix.)
   }
   try { window.creditKidJarFromApprovedLog = creditKidJarFromApprovedLog; } catch(_){}
 
@@ -8333,32 +8330,12 @@ init();
       if (typeof currentUserId === 'undefined' || !currentUserId) return;
       if (typeof creditGoalsForUser !== 'function' || typeof dbGetAll !== 'function') return;
       _seedGoalCreditedFromJarSet();
-      const logs = (typeof _memChoreLogs !== 'undefined' && Array.isArray(_memChoreLogs)) ? _memChoreLogs : [];
-      const credited = _getGoalCreditedLogIds();
-      // Approved logs for THIS child that were never applied to a goal, oldest first.
-      const pending = logs
-        .filter(l => l && l.status === 'approved' && l.userId === currentUserId && !credited.has(l.id))
-        .sort((a,b) => new Date(a.approvedAt || a.date || 0) - new Date(b.approvedAt || b.date || 0));
-      // Note: do NOT early-return when pending is empty — the balance-based
-      // top-up below must still run to close any goal-vs-jar gap (e.g. cloud
-      // ledger dollars that never entered goal history).
-      for (const cl of pending){
-        // Resolve amount: synced log carries _amount; fall back to the chore record.
-        let amount = Number(cl._amount) || 0;
-        if ((!amount || amount <= 0) && typeof _memChores !== 'undefined'){
-          const ch = _memChores.find(c => c.id === cl.choreId);
-          amount = Number(ch && ch.amount) || 0;
-        }
-        // Mark BEFORE work so a mid-pass error can't cause a double credit on retry.
-        _markGoalCredited(cl.id);
-        if (!amount || amount <= 0) continue; // nothing to credit, but stays marked
-        const allGoalsNow = await dbGetAll();
-        const userGoals = allGoalsNow.filter(g => g.userId === currentUserId);
-        if (!userGoals.length) continue;
-        const note = 'Chore: ' + (cl._choreName || 'Chore');
-        await creditGoalsForUser(amount, (cl.approvedAt || new Date().toISOString()), note, userGoals);
-        console.log('[PuzzlePig v61] goal-reconciled approved log', cl.id, '+$' + amount);
-      }
+      // v64: The old log-based crediting pass was REMOVED here. It credited the
+      // goal per approved log AND then the balance-based top-up ran — two
+      // mechanisms crediting the same dollars, which double-counted (the v62/v63
+      // regression). The balance-based top-up below is now the SOLE goal-crediting
+      // path on boot/sync: it simply brings the goal up to match the Save-jar
+      // balance, so it can never credit the same money twice.
       // v61.1 BALANCE-BASED TOP-UP (add-only, never lowers anything).
       // The Save-jar balance reflects the child's true earnings, including the
       // cloud ledger catch-up (ppLedgerCatchUp restores lifetime earnings that
