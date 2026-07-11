@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T07:55Z-v68';</script>
+<script>window.__PP_BUILD__='2026-07-11T08:35Z-v69';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -5000,20 +5000,27 @@ async function pp32OpenKidModal(id){
 async function pp32BuildKidHistoryHTML(userId){
   let txs = [];
   const byId = {};
+  // --- v69 diagnostics: surface exactly what each branch returns, on-device ---
+  const _diag = { userId: String(userId), localAll: 0, localMatch: 0, remote: 0, remoteErr: '', localAllIds: [] };
   // 1) Local IndexedDB store (everything this device has merged so far)
   try {
     if (typeof dbGetAllJarTxs === 'function'){
       const all = await dbGetAllJarTxs();
-      (all || []).filter(t => t && t.userId === userId).forEach(t => { byId[t.id] = t; });
+      _diag.localAll = (all || []).length;
+      // capture the distinct userIds present locally so we can spot an id mismatch
+      try { _diag.localAllIds = Array.from(new Set((all||[]).map(t => t && t.userId).filter(Boolean))).slice(0,6); } catch(_){}
+      (all || []).filter(t => t && t.userId === userId).forEach(t => { byId[t.id] = t; _diag.localMatch++; });
     }
-  } catch(_){}
+  } catch(e){ _diag.remoteErr = 'localEx:'+e; }
   // 2) Fresh cloud pull for this child (parent may not have merged them yet)
   try {
     if (window.ppSync && typeof window.ppSync.fetchTransactionsForUser === 'function'){
       const remote = await window.ppSync.fetchTransactionsForUser(userId);
+      _diag.remote = (remote || []).length;
       (remote || []).forEach(t => { if (t && t.id && !byId[t.id]) byId[t.id] = t; });
-    }
-  } catch(_){}
+    } else { _diag.remoteErr = 'no fetch fn'; }
+  } catch(e){ _diag.remoteErr = 'remoteEx:'+e; }
+  try { console.log('[PuzzlePig] history diag', JSON.stringify(_diag)); } catch(_){}
   txs = Object.values(byId);
   txs.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
   const shown = txs.slice(0, 50);
@@ -5048,9 +5055,11 @@ async function pp32BuildKidHistoryHTML(userId){
           </div>`;
       }).join('');
   const more = txs.length > shown.length ? `<div style="font-size:0.72rem;color:var(--text-muted);text-align:center;padding-top:8px;">Showing latest ${shown.length} of ${txs.length}</div>` : '';
+  // v69 temporary on-screen diagnostic line (tap-to-copy). Remove once history renders.
+  const diagLine = `<div style="font-size:0.62rem;color:var(--text-muted);opacity:0.7;margin-top:8px;word-break:break-all;" onclick="try{navigator.clipboard.writeText(this.textContent);}catch(_){}">diag: id=${esc(_diag.userId)} local=${_diag.localMatch}/${_diag.localAll} cloud=${_diag.remote}${_diag.remoteErr?(' err='+esc(_diag.remoteErr)):''} ids=[${esc(_diag.localAllIds.join(','))}]</div>`;
   return `<div class="pp32-modal-section">
       <h4>History${txs.length ? ' ('+txs.length+')' : ''}</h4>
-      ${rows}${more}
+      ${rows}${more}${diagLine}
     </div>`;
 }
 try { window.pp32BuildKidHistoryHTML = pp32BuildKidHistoryHTML; } catch(_){}
