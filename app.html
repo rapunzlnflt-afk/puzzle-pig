@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T06:00Z-v62';</script>
+<script>window.__PP_BUILD__='2026-07-11T06:30Z-v63';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -8272,6 +8272,15 @@ init();
         window.goals = allG2.filter(g => g.userId === currentUserId);
       }
       if (typeof renderJarsView === 'function') renderJarsView();
+      if (typeof renderHome === 'function') renderHome();
+      if (typeof renderPuzzle === 'function' && typeof currentGoalId !== 'undefined' && currentGoalId) renderPuzzle();
+    } catch(_){}
+    // v63: guarantee the goal catches up to the Save-jar balance on EVERY approval,
+    // no matter how it arrives. The inline goal credit above can silently fail or
+    // race; this add-only top-up closes any remaining goal-vs-jar gap. Idempotent:
+    // once goal == jar it does nothing, so it can never double-count.
+    try { if (typeof topUpGoalsToJarBalance === 'function') await topUpGoalsToJarBalance(); } catch(_){}
+    try {
       if (typeof renderHome === 'function') renderHome();
       if (typeof renderPuzzle === 'function' && typeof currentGoalId !== 'undefined' && currentGoalId) renderPuzzle();
     } catch(_){}
