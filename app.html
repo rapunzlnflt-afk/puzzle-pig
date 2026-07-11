@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T08:35Z-v69';</script>
+<script>window.__PP_BUILD__='2026-07-11T08:50Z-v70';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -869,6 +869,8 @@ a { color: inherit; text-decoration: none; }
 .pp32-kid.expanded .pp32-kid-chevron { transform: rotate(90deg); }
 .pp32-kid-body { padding: 0 12px 12px; display:none; border-top: 1px solid var(--border); padding-top: 10px; }
 .pp32-kid.expanded .pp32-kid-body { display:block; }
+.pp32-kid-section-label { font-size:0.7rem; font-weight:700; color:var(--purple-600,#6D28D9); text-transform:uppercase; letter-spacing:0.5px; margin:0 0 6px; }
+.pp32-kid-history { max-height:260px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 .pp32-pending-row { display:flex; align-items:center; gap:8px; padding:8px 10px; background:#FAF7FE; border-left:3px solid var(--purple-500, #7C3AED); border-radius:6px; margin-bottom:6px; }
 .pp32-pending-row .name { flex:1; min-width:0; font-weight:600; font-size:0.85rem; }
 .pp32-pending-row .amt { font-size:0.72rem; color:var(--text-muted); }
@@ -4734,7 +4736,10 @@ async function renderParentSettings(opts) {
           <button class="danger" onclick="event.stopPropagation();pp32CloseMenus();removeUserFromParent('${u.id}','${safeName}')">Remove child</button>
         </div>
         <div class="pp32-kid-body">
-          ${pendingRows || `<p style="font-size:0.8rem;color:var(--text-muted);margin:0;">No pending chores.</p>`}
+          <div class="pp32-kid-section-label">Pending approval</div>
+          ${pendingRows || `<p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 4px;">No pending chores.</p>`}
+          <div class="pp32-kid-section-label" style="margin-top:12px;">History</div>
+          <div id="kidhist_${u.id}" class="pp32-kid-history"><p style="font-size:0.8rem;color:var(--text-muted);margin:0;">Loading…</p></div>
         </div>
       </div>`;
   }).join('');
@@ -4906,11 +4911,26 @@ async function renderParentSettings(opts) {
 }
 
 // v=32: kid card expand/collapse + 3-dot menu
-function pp32ToggleKid(id){
+async function pp32ToggleKid(id){
   const el = document.getElementById('kid_'+id);
   if (!el) return;
+  const nowExpanded = !el.classList.contains('expanded');
   el.classList.toggle('expanded');
   pp32CloseMenus();
+  // v70: when expanding, populate the inline History for this child (mobile path
+  // never opened the desktop modal, so history was never rendered here).
+  if (nowExpanded){
+    const host = document.getElementById('kidhist_'+id);
+    if (host && typeof pp32BuildKidHistoryHTML === 'function'){
+      try {
+        const html = await pp32BuildKidHistoryHTML(id, true);
+        host.innerHTML = html;
+      } catch(e){
+        host.innerHTML = '<p style="font-size:0.8rem;color:#DC2626;margin:0;">Could not load history.</p>';
+        console.warn('[PuzzlePig] inline history load failed', e);
+      }
+    }
+  }
 }
 // v=34: on desktop open modal, on mobile toggle inline
 function pp32KidCardClick(id){
@@ -4997,7 +5017,7 @@ async function pp32OpenKidModal(id){
 // merged from the cloud) and also pulls this child's rows fresh from the cloud
 // transactions table, so the parent sees the same record the child sees even
 // though the parent device never "selects" the child. Newest first. Read-only.
-async function pp32BuildKidHistoryHTML(userId){
+async function pp32BuildKidHistoryHTML(userId, bare){
   let txs = [];
   const byId = {};
   // --- v69 diagnostics: surface exactly what each branch returns, on-device ---
@@ -5055,11 +5075,12 @@ async function pp32BuildKidHistoryHTML(userId){
           </div>`;
       }).join('');
   const more = txs.length > shown.length ? `<div style="font-size:0.72rem;color:var(--text-muted);text-align:center;padding-top:8px;">Showing latest ${shown.length} of ${txs.length}</div>` : '';
-  // v69 temporary on-screen diagnostic line (tap-to-copy). Remove once history renders.
-  const diagLine = `<div style="font-size:0.62rem;color:var(--text-muted);opacity:0.7;margin-top:8px;word-break:break-all;" onclick="try{navigator.clipboard.writeText(this.textContent);}catch(_){}">diag: id=${esc(_diag.userId)} local=${_diag.localMatch}/${_diag.localAll} cloud=${_diag.remote}${_diag.remoteErr?(' err='+esc(_diag.remoteErr)):''} ids=[${esc(_diag.localAllIds.join(','))}]</div>`;
+  // bare mode (inline mobile card): return just the rows, no section wrapper/heading
+  // (the card already renders its own "History" label).
+  if (bare){ return `${rows}${more}`; }
   return `<div class="pp32-modal-section">
       <h4>History${txs.length ? ' ('+txs.length+')' : ''}</h4>
-      ${rows}${more}${diagLine}
+      ${rows}${more}
     </div>`;
 }
 try { window.pp32BuildKidHistoryHTML = pp32BuildKidHistoryHTML; } catch(_){}
