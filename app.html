@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T06:45Z-v64';</script>
+<script>window.__PP_BUILD__='2026-07-11T07:00Z-v65';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -7503,6 +7503,42 @@ init();
     };
   }
 
+  // v65 Phase 1: shared transaction ledger. Maps the local jarTxs record
+  // (id, jarId, userId, amount, type, note, date, createdAt) to/from the cloud
+  // `transactions` row. jar_type is resolved best-effort from the jars array so
+  // both parent and child can label which jar an event touched.
+  function txToRow(t){
+    let jarType = t._jarType || '';
+    try {
+      if (!jarType && typeof jars !== 'undefined' && Array.isArray(jars)){
+        const j = jars.find(x => x.id === t.jarId);
+        if (j) jarType = j.type || '';
+      }
+    } catch(_){}
+    return {
+      local_id: t.id,
+      family_id: familyId,
+      user_local_id: t.userId || '',
+      type: t.type || 'adjustment',
+      amount: Number(t.amount) || 0,
+      note: t.note || '',
+      jar_type: jarType || null,
+      tx_date: t.date || t.createdAt || new Date().toISOString()
+    };
+  }
+  function rowToTx(r){
+    return {
+      id: r.local_id,
+      userId: r.user_local_id,
+      type: r.type || 'adjustment',
+      amount: Number(r.amount) || 0,
+      note: r.note || '',
+      _jarType: r.jar_type || '',
+      date: r.tx_date || r.created_at || null,
+      createdAt: r.created_at || new Date().toISOString()
+    };
+  }
+
   // ---------- push helpers ----------
   async function pushChore(c){
     if (!familyId || !c || !c.id) return;
@@ -7606,6 +7642,17 @@ init();
       if (error) console.warn('[PuzzlePig sync] delete chore error', error);
     } catch(e){ console.warn('[PuzzlePig sync] delete chore exception', e); }
   }
+  // v65 Phase 1: push a jar transaction to the shared cloud ledger. Idempotent
+  // upsert on local_id — the same event can never be inserted twice. Non-blocking
+  // and best-effort: a failure never interrupts the local write.
+  async function pushTransaction(t){
+    if (!familyId || !t || !t.id) return;
+    try {
+      const { error } = await sb.from('transactions').upsert(txToRow(t), { onConflict: 'local_id' });
+      if (error) console.warn('[PuzzlePig sync] push transaction error', error);
+    } catch(e){ console.warn('[PuzzlePig sync] push transaction exception', e); }
+  }
+  try { window.ppPushTransaction = pushTransaction; } catch(_){}
 
   // ---------- wrap existing local writers so EVERY write also mirrors to Supabase ----------
   function wrapLocalWriters(){
@@ -7669,6 +7716,9 @@ init();
       window.dbPutJarTx = async function(t){
         const r = await orig(t);
         try { recomputeAndPushTotalSaved(t && t.userId); } catch(_){}
+        // v65 Phase 1: mirror every jar transaction into the shared cloud ledger
+        // (non-blocking, idempotent upsert on local_id).
+        try { pushTransaction(t); } catch(_){}
         return r;
       };
       window.dbPutJarTx.__ppWrapped = true;
@@ -7679,19 +7729,22 @@ init();
   async function pullAndMerge(){
     if (!familyId) return;
     try {
-      const [choresRes, logsRes, usersRes] = await Promise.all([
+      const [choresRes, logsRes, usersRes, txRes] = await Promise.all([
         sb.from('chores').select('*').eq('family_id', familyId),
         sb.from('chore_logs').select('*').eq('family_id', familyId),
-        sb.from('family_users').select('*').eq('family_id', familyId)
+        sb.from('family_users').select('*').eq('family_id', familyId),
+        sb.from('transactions').select('*').eq('family_id', familyId)
       ]);
       if (choresRes.error) console.warn('[PuzzlePig sync] pull chores error', choresRes.error);
       if (logsRes.error)   console.warn('[PuzzlePig sync] pull logs error', logsRes.error);
       if (usersRes.error)  console.warn('[PuzzlePig sync] pull users error', usersRes.error);
+      if (txRes && txRes.error) console.warn('[PuzzlePig sync] pull transactions error', txRes.error);
 
       const remoteChores = (choresRes.data || []).map(rowToChore);
       const remoteLogs   = (logsRes.data   || []).map(rowToLog);
       const remoteUsers  = (usersRes.data  || []).map(rowToUser);
-      console.log('[PuzzlePig sync] pullAndMerge fetched', { users: remoteUsers.length, chores: remoteChores.length, logs: remoteLogs.length, familyId });
+      const remoteTxs    = ((txRes && txRes.data) || []).map(rowToTx);
+      console.log('[PuzzlePig sync] pullAndMerge fetched', { users: remoteUsers.length, chores: remoteChores.length, logs: remoteLogs.length, txs: remoteTxs.length, familyId });
 
       // Wait for the local _mem arrays to exist before merging — init() may not
       // have finished setting them up yet on a kid phone that just joined.
@@ -7875,6 +7928,28 @@ init();
         else _memChoreLogs.push(rl);
         try { if (typeof _idbPut === 'function') await _idbPut(CHORE_LOG_STORE, _memChoreLogs.find(x => x.id === rl.id)); } catch(_){}
       }
+
+      // v65 Phase 1: merge the shared transaction ledger into the local jarTx store.
+      // Append-only and idempotent by id (= cloud local_id): if a tx already exists
+      // locally we keep the local record (it carries richer fields like jarId); we
+      // only ADD cloud txs this device has never seen. This is foundation only —
+      // balances are NOT recomputed from it yet (that's a later phase). No dollars
+      // are moved or removed here, honoring the add-only / never-lose-earnings rule.
+      try {
+        if (Array.isArray(remoteTxs) && remoteTxs.length){
+          if (typeof jarTxs === 'undefined' || !Array.isArray(jarTxs)) { try { window.jarTxs = []; } catch(_){} }
+          let added = 0;
+          for (const rt of remoteTxs){
+            if (!rt || !rt.id) continue;
+            const exists = Array.isArray(jarTxs) && jarTxs.some(x => x && x.id === rt.id);
+            if (exists) continue;
+            if (Array.isArray(jarTxs)) jarTxs.push(rt);
+            try { if (typeof _idbPut === 'function') await _idbPut(JAR_TX_STORE, rt); } catch(_){}
+            added++;
+          }
+          if (added) console.log('[PuzzlePig sync] merged', added, 'new cloud transactions into local ledger');
+        }
+      } catch(e){ console.warn('[PuzzlePig sync] transaction merge failed', e); }
 
       // Refresh visible-to-current-user views' working arrays
       if (typeof currentUserId !== 'undefined' && currentUserId){
