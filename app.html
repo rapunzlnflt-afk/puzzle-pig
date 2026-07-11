@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T07:35Z-v67';</script>
+<script>window.__PP_BUILD__='2026-07-11T07:55Z-v68';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -7727,11 +7727,12 @@ init();
   // upsert on local_id — the same event can never be inserted twice. Non-blocking
   // and best-effort: a failure never interrupts the local write.
   async function pushTransaction(t){
-    if (!familyId || !t || !t.id) return;
+    if (!familyId || !t || !t.id) return true; // nothing to do; not a failure
     try {
       const { error } = await sb.from('transactions').upsert(txToRow(t), { onConflict: 'local_id' });
-      if (error) console.warn('[PuzzlePig sync] push transaction error', error);
-    } catch(e){ console.warn('[PuzzlePig sync] push transaction exception', e); }
+      if (error){ console.warn('[PuzzlePig sync] push transaction error', error); return false; }
+      return true;
+    } catch(e){ console.warn('[PuzzlePig sync] push transaction exception', e); return false; }
   }
   try { window.ppPushTransaction = pushTransaction; } catch(_){}
 
@@ -8056,18 +8057,28 @@ init();
       // on local_id — cannot double-insert). Guarded by a per-device flag so it
       // runs a single time. Add-only: never deletes or alters existing cloud rows.
       try {
-        const BACKFILL_KEY = 'pp_tx_backfill_done_v1';
+        // v68: bumped to _v2. The v1 flag may have been set on a device while every
+        // push silently failed (the cloud `transactions` table was missing the
+        // anon/authenticated GRANT, so inserts returned permission-denied). Now that
+        // the grant is in place, re-run the backfill once. Also: only mark the flag
+        // done when we actually confirm a push landed (or there was nothing to push),
+        // so a transient failure can't permanently block the backfill.
+        const BACKFILL_KEY = 'pp_tx_backfill_done_v2';
         if (!localStorage.getItem(BACKFILL_KEY) && typeof dbGetAllJarTxs === 'function' && typeof pushTransaction === 'function'){
           const localAll = await dbGetAllJarTxs();
+          let pushed = 0, failed = 0;
           if (Array.isArray(localAll) && localAll.length){
-            let pushed = 0;
             for (const t of localAll){
               if (!t || !t.id) continue;
-              try { await pushTransaction(t); pushed++; } catch(_){}
+              try { const ok = await pushTransaction(t); if (ok === false) failed++; else pushed++; }
+              catch(_){ failed++; }
             }
-            console.log('[PuzzlePig sync] one-time tx backfill pushed', pushed, 'local transactions to cloud');
+            console.log('[PuzzlePig sync] one-time tx backfill pushed', pushed, 'failed', failed, 'of', localAll.length, 'local transactions');
           }
-          try { localStorage.setItem(BACKFILL_KEY, new Date().toISOString()); } catch(_){}
+          // Only lock the flag if nothing failed (all pushed, or there was nothing to push).
+          if (failed === 0){
+            try { localStorage.setItem(BACKFILL_KEY, new Date().toISOString()); } catch(_){}
+          }
         }
       } catch(e){ console.warn('[PuzzlePig sync] tx backfill failed', e); }
 
