@@ -9,7 +9,7 @@
  * offline. It also calls skipWaiting()/clients.claim() so a new SW takes over
  * immediately instead of waiting for every tab to close.
  */
-const PP_SW_VERSION = 'pp-v61';
+const PP_SW_VERSION = 'pp-v62';
 const PP_CACHE = 'puzzle-pig-' + PP_SW_VERSION;
 // The app shell we want to keep available offline.
 const PP_SHELL = ['./app.html', './index.html', './'];

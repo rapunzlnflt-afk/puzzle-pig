@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T05:00Z-v61';</script>
+<script>window.__PP_BUILD__='2026-07-11T06:00Z-v62';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -8330,7 +8330,9 @@ init();
       const pending = logs
         .filter(l => l && l.status === 'approved' && l.userId === currentUserId && !credited.has(l.id))
         .sort((a,b) => new Date(a.approvedAt || a.date || 0) - new Date(b.approvedAt || b.date || 0));
-      if (!pending.length) return;
+      // Note: do NOT early-return when pending is empty — the balance-based
+      // top-up below must still run to close any goal-vs-jar gap (e.g. cloud
+      // ledger dollars that never entered goal history).
       for (const cl of pending){
         // Resolve amount: synced log carries _amount; fall back to the chore record.
         let amount = Number(cl._amount) || 0;
@@ -8348,13 +8350,53 @@ init();
         await creditGoalsForUser(amount, (cl.approvedAt || new Date().toISOString()), note, userGoals);
         console.log('[PuzzlePig v61] goal-reconciled approved log', cl.id, '+$' + amount);
       }
-      // Keep the Save-jar balance defined as the sum of goal history.
-      try { if (typeof syncSaveJarBalance === 'function') await syncSaveJarBalance(); } catch(_){}
+      // v61.1 BALANCE-BASED TOP-UP (add-only, never lowers anything).
+      // The Save-jar balance reflects the child's true earnings, including the
+      // cloud ledger catch-up (ppLedgerCatchUp restores lifetime earnings that
+      // may predate the goal or were lost to a racy realtime approve). Those
+      // dollars are in the jar but never made it into goal history, so the goal
+      // can sit BELOW the jar. If so, credit the difference into the goal. This
+      // does not depend on any log-id set (which an earlier seed could poison)
+      // and can only ADD the exact gap, so it can never double-count.
+      try { await topUpGoalsToJarBalance(); } catch(_){}
       try { if (typeof renderHome === 'function') renderHome(); } catch(_){}
       try { if (typeof renderPuzzle === 'function' && typeof currentGoalId !== 'undefined' && currentGoalId) renderPuzzle(); } catch(_){}
     } catch(e){ console.warn('[PuzzlePig v61] reconcileGoalsFromApprovedLogs failed', e); }
   }
   try { window.reconcileGoalsFromApprovedLogs = reconcileGoalsFromApprovedLogs; } catch(_){}
+
+  // v61.1: Bring the child's goal total UP to match their Save-jar balance when
+  // the jar is higher. Add-only — it computes the positive gap and credits only
+  // that gap into the child's active goals (creditGoalsForUser caps each goal at
+  // its target). Never lowers the jar or any goal. Safe to run every sync: once
+  // goal-sum == jar there is no gap, so it becomes a no-op.
+  async function topUpGoalsToJarBalance(){
+    try {
+      if (typeof role !== 'undefined' && role === 'parent') return;
+      if (typeof currentUserId === 'undefined' || !currentUserId) return;
+      if (typeof dbGetAllJars !== 'function' || typeof dbGetAll !== 'function' || typeof creditGoalsForUser !== 'function') return;
+      const allJ = await dbGetAllJars();
+      const saveJar = allJ.filter(j => j.userId === currentUserId).find(j => j.type === 'save');
+      if (!saveJar) return;
+      const jarBal = Math.round((Number(saveJar.balance) || 0) * 100) / 100;
+      const allGoalsNow = await dbGetAll();
+      const userGoals = allGoalsNow.filter(g => g.userId === currentUserId);
+      if (!userGoals.length) return;
+      const goalSum = Math.round(userGoals.reduce((s, g) => s + (Array.isArray(g.history) ? g.history.reduce((a,h)=>a+(Number(h.amount)||0),0) : 0), 0) * 100) / 100;
+      const gap = Math.round((jarBal - goalSum) * 100) / 100;
+      if (gap <= 0.005) return; // goal already >= jar; nothing to add (never lower)
+      // Only credit into goals that still have room; cap the credit at total remaining room
+      const room = userGoals.reduce((s, g) => {
+        const saved = Array.isArray(g.history) ? g.history.reduce((a,h)=>a+(Number(h.amount)||0),0) : 0;
+        return s + Math.max(0, (Number(g.goalAmount)||0) - saved);
+      }, 0);
+      const credit = Math.min(gap, Math.round(room * 100) / 100);
+      if (credit <= 0.005) return; // all goals already full; surplus correctly stays in jar
+      await creditGoalsForUser(credit, new Date().toISOString(), 'Earnings caught up', userGoals);
+      console.log('[PuzzlePig v61.1] topped up goal by $' + credit.toFixed(2) + ' (jar ' + jarBal + ' vs goal ' + goalSum + ')');
+    } catch(e){ console.warn('[PuzzlePig v61.1] topUpGoalsToJarBalance failed', e); }
+  }
+  try { window.topUpGoalsToJarBalance = topUpGoalsToJarBalance; } catch(_){}
 
   // ---------- parent toast ----------
   // Combined toast: shows total pending count across all kids. Tap to jump to parent settings.
