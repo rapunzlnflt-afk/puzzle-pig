@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T07:15Z-v66';</script>
+<script>window.__PP_BUILD__='2026-07-11T07:35Z-v67';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -825,6 +825,14 @@ a { color: inherit; text-decoration: none; }
 .pp32-pagehead { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); margin-bottom: var(--space-4); }
 .pp32-pagehead h2 { margin:0; font-size:1.25rem; }
 .pp32-section-label { font-size:0.72rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.6px; display:flex; align-items:center; justify-content:space-between; margin: var(--space-3) 0 var(--space-2); }
+/* v66.1: Chores as its own card so the collapsed header is easy to see and tap. */
+.pp32-chores-card { background: var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow: var(--shadow-sm); overflow:hidden; margin: var(--space-3) 0; }
+.pp32-chores-card-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; cursor:pointer; user-select:none; background: linear-gradient(180deg, rgba(92,66,135,0.06), rgba(92,66,135,0.02)); border-bottom:1px solid var(--border); transition: background 0.15s; }
+.pp32-chores-card-head.collapsed { border-bottom-color: transparent; }
+.pp32-chores-card-head:hover { background: rgba(92,66,135,0.10); }
+.pp32-chores-card-title { font-size:0.98rem; font-weight:700; color: var(--purple-700, #5C4287); display:inline-flex; align-items:center; }
+.pp32-chores-card-head .chore-collapse-chevron { transition: transform 0.18s; color: var(--purple-600,#6D28D9); }
+.pp32-chores-card .pp32-chores-box { padding: 4px 12px 10px; }
 .pp32-section-label a { font-size:0.78rem; color: var(--purple-600, #6D28D9); text-decoration:none; font-weight:600; cursor:pointer; }
 /* Family code box (parent settings) */
 .pp-family-code-box { display:flex; flex-wrap:wrap; align-items:center; gap:12px; justify-content:space-between; background:#F5F4F1; border:1px solid rgba(92,66,135,0.18); border-radius:14px; padding:14px 16px; margin-bottom:var(--space-3); }
@@ -4804,8 +4812,10 @@ async function renderParentSettings(opts) {
         ${noChildrenHTML}${childCards}
       </div>
 
-      <div class="pp32-section-label chore-collapse-toggle${ppIsChoreSectionCollapsed('parentChores') ? ' collapsed' : ''}" style="cursor:pointer;" onclick="ppToggleChoreSection('parentChores', this)">
-        <span>Chores${allChoresGlobal.length > 0 ? ' ('+allChoresGlobal.length+')' : ''}</span>
+      <div class="pp32-chores-card">
+      <div class="pp32-chores-card-head chore-collapse-toggle${ppIsChoreSectionCollapsed('parentChores') ? ' collapsed' : ''}" onclick="ppToggleChoreSection('parentChores', this)">
+        <span class="pp32-chores-card-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px;margin-right:6px;"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12l2 2 4-4"/></svg>Chores${allChoresGlobal.length > 0 ? ' ('+allChoresGlobal.length+')' : ''}</span>
         ${PP_CHEVRON_SVG}
       </div>
       <div class="pp32-chores-box chore-collapse-body${ppIsChoreSectionCollapsed('parentChores') ? ' collapsed' : ''}">
@@ -4830,6 +4840,7 @@ async function renderParentSettings(opts) {
             Show sync status
           </button>
         </div>
+      </div>
       </div>
 
       ${(function(){
@@ -4945,9 +4956,11 @@ async function pp32OpenKidModal(id){
   const safeName = esc(u.name).replace(/'/g,"\\'");
 
   // v65 Phase 2: shared history section. Reads this child's transactions from the
-  // synced ledger (jarTxs, mirrored via the cloud transactions table) so the parent
-  // sees the SAME list the child sees — every money event across all jars.
-  const historyHTML = pp32BuildKidHistoryHTML(u.id);
+  // synced ledger so the parent sees the SAME list the child sees — every money
+  // event across all jars. v66.1: reads from IndexedDB (all family txs) + a fresh
+  // cloud pull, NOT the current-user-filtered in-memory jarTxs (which is empty on
+  // the parent device).
+  const historyHTML = await pp32BuildKidHistoryHTML(u.id);
 
   const html = `
     <div class="pp32-modal-backdrop" id="pp32KidModal" onclick="if(event.target===this)pp32CloseKidModal()">
@@ -4979,17 +4992,29 @@ async function pp32OpenKidModal(id){
   if (existing) existing.remove();
   document.body.insertAdjacentHTML('beforeend', html);
 }
-// v65 Phase 2: build the shared per-child history list for the parent modal.
-// Reads jarTxs (the synced ledger) filtered to this child, across ALL jars,
-// newest first. Same visual language as the child's own transaction list so
-// both sides read an identical record. Read-only in Phase 2 (no edit/delete).
-function pp32BuildKidHistoryHTML(userId){
+// v65 Phase 2 (v66.1): build the shared per-child history list for the parent
+// modal. Reads from the IndexedDB jarTx store (holds ALL family transactions
+// merged from the cloud) and also pulls this child's rows fresh from the cloud
+// transactions table, so the parent sees the same record the child sees even
+// though the parent device never "selects" the child. Newest first. Read-only.
+async function pp32BuildKidHistoryHTML(userId){
   let txs = [];
+  const byId = {};
+  // 1) Local IndexedDB store (everything this device has merged so far)
   try {
-    if (typeof jarTxs !== 'undefined' && Array.isArray(jarTxs)){
-      txs = jarTxs.filter(t => t && t.userId === userId);
+    if (typeof dbGetAllJarTxs === 'function'){
+      const all = await dbGetAllJarTxs();
+      (all || []).filter(t => t && t.userId === userId).forEach(t => { byId[t.id] = t; });
     }
   } catch(_){}
+  // 2) Fresh cloud pull for this child (parent may not have merged them yet)
+  try {
+    if (window.ppSync && typeof window.ppSync.fetchTransactionsForUser === 'function'){
+      const remote = await window.ppSync.fetchTransactionsForUser(userId);
+      (remote || []).forEach(t => { if (t && t.id && !byId[t.id]) byId[t.id] = t; });
+    }
+  } catch(_){}
+  txs = Object.values(byId);
   txs.sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0));
   const shown = txs.slice(0, 50);
   const typeName = (t) => {
@@ -7874,8 +7899,25 @@ init();
             deduped.push(u);
           }
         }
+        // v66.1: Drop LOCAL-ONLY phantom cards (id not in cloud) that have no name.
+        // The cloud is the source of truth for the roster; a nameless local-only
+        // record is a stale/empty phantom (the reported "3 children but only 2
+        // added"). We only remove NAMELESS local-only cards — any named local card
+        // is preserved (it may be a just-added child whose push is still in flight),
+        // honoring the never-delete-real-data rule.
+        const _pruned = [];
+        for (const u of deduped){
+          const isRemote = _remoteIds.has(u.id);
+          const hasName = _norm(u.name) !== '';
+          if (!isRemote && !hasName){
+            try { if (typeof _idbDelete === 'function' && u.id) await _idbDelete(USER_STORE, u.id); } catch(_){}
+            console.log('[PuzzlePig sync] pruned nameless local-only phantom user', u.id);
+            continue;
+          }
+          _pruned.push(u);
+        }
         _memUsers.length = 0;
-        for (const u of deduped) _memUsers.push(u);
+        for (const u of _pruned) _memUsers.push(u);
         // If a merge produced a HIGHER total than the cloud had, push the corrected
         // total back so it persists and syncs (otherwise the next pull reverts it).
         for (const u of _memUsers){
@@ -8006,6 +8048,28 @@ init();
           if (added) console.log('[PuzzlePig sync] merged', added, 'new cloud transactions into local ledger');
         }
       } catch(e){ console.warn('[PuzzlePig sync] transaction merge failed', e); }
+
+      // v66.1 Phase 4 (early): ONE-TIME local→cloud backfill of existing jar
+      // transactions. Before v65 no transactions were synced, so a device may hold
+      // real history (e.g. an old spend→save transfer, chore credits) that the
+      // cloud ledger doesn't have yet. Push each local tx once (idempotent upsert
+      // on local_id — cannot double-insert). Guarded by a per-device flag so it
+      // runs a single time. Add-only: never deletes or alters existing cloud rows.
+      try {
+        const BACKFILL_KEY = 'pp_tx_backfill_done_v1';
+        if (!localStorage.getItem(BACKFILL_KEY) && typeof dbGetAllJarTxs === 'function' && typeof pushTransaction === 'function'){
+          const localAll = await dbGetAllJarTxs();
+          if (Array.isArray(localAll) && localAll.length){
+            let pushed = 0;
+            for (const t of localAll){
+              if (!t || !t.id) continue;
+              try { await pushTransaction(t); pushed++; } catch(_){}
+            }
+            console.log('[PuzzlePig sync] one-time tx backfill pushed', pushed, 'local transactions to cloud');
+          }
+          try { localStorage.setItem(BACKFILL_KEY, new Date().toISOString()); } catch(_){}
+        }
+      } catch(e){ console.warn('[PuzzlePig sync] tx backfill failed', e); }
 
       // Refresh visible-to-current-user views' working arrays
       if (typeof currentUserId !== 'undefined' && currentUserId){
@@ -9348,6 +9412,18 @@ init();
         if (data && data.total_saved != null) return Number(data.total_saved) || 0;
         return null;
       } catch(e){ console.warn('[PuzzlePig sync] getCloudTotal error', e); return null; }
+    },
+    // v65 Phase 2: fetch a single child's transactions from the shared cloud
+    // ledger so the parent's History view can show them even though the parent
+    // device never "selects" that child. Returns mapped tx objects (rowToTx).
+    fetchTransactionsForUser: async (userLocalId) => {
+      try {
+        if (!sb || !familyId || !userLocalId) return [];
+        const { data, error } = await sb.from('transactions')
+          .select('*').eq('family_id', familyId).eq('user_local_id', userLocalId);
+        if (error) { console.warn('[PuzzlePig sync] fetchTransactionsForUser error', error); return []; }
+        return (data || []).map(rowToTx);
+      } catch(e){ console.warn('[PuzzlePig sync] fetchTransactionsForUser exception', e); return []; }
     },
     // v=42: Kid device claims an identity — mark device_claimed_at on family_users
     markDeviceClaimed: async (kidLocalId) => {
