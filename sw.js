@@ -9,7 +9,7 @@
  * offline. It also calls skipWaiting()/clients.claim() so a new SW takes over
  * immediately instead of waiting for every tab to close.
  */
-const PP_SW_VERSION = 'pp-v71';
+const PP_SW_VERSION = 'pp-v72';
 const PP_CACHE = 'puzzle-pig-' + PP_SW_VERSION;
 // The app shell we want to keep available offline.
 const PP_SHELL = ['./app.html', './index.html', './'];
@@ -53,10 +53,15 @@ self.addEventListener('fetch', (event) => {
 
   if (isShell) {
     // NETWORK-FIRST: always try to get the freshest app shell; fall back to cache offline.
+    // v72: fetch the shell from a cache-busted URL with no-store so neither the HTTP
+    // cache nor any intermediary can hand back a stale app.html on iOS PWAs.
     event.respondWith((async () => {
       try {
-        const fresh = await fetch(req, { cache: 'no-store' });
+        const bust = new URL(req.url);
+        bust.searchParams.set('sw_fresh', Date.now().toString());
+        const fresh = await fetch(bust.toString(), { cache: 'no-store' });
         const cache = await caches.open(PP_CACHE);
+        // Store under the ORIGINAL request key so offline fallback still matches.
         cache.put(req, fresh.clone()).catch(() => {});
         return fresh;
       } catch (_) {

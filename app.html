@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T09:10Z-v71';</script>
+<script>window.__PP_BUILD__='2026-07-11T09:20Z-v72';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -42,6 +42,54 @@
       });
     });
   } catch(e){ console.warn('[PuzzlePig] SW setup exception', e); }
+})();
+
+/* v71 HARD FRESHNESS GUARD:
+ * iOS home-screen PWAs sometimes keep serving an OLD cached app.html even after
+ * force-closing, because controllerchange / SW-update timing is unreliable there.
+ * This guard fetches the LIVE app.html build marker from the network (cache-busted,
+ * no-store) and, if it differs from the build baked into THIS running page, wipes
+ * all caches + unregisters SWs and does ONE hard reload so the newest build shows.
+ * A short cooldown flag prevents any reload loop. */
+(function(){
+  try {
+    var RUNNING = (window.__PP_BUILD__ || '').trim();
+    if (!RUNNING) return;
+    var LOOP_KEY = 'pp_freshness_reloaded_at';
+    // Don't re-check more than once every 30s (guards against reload loops).
+    var last = 0; try { last = parseInt(localStorage.getItem(LOOP_KEY) || '0', 10) || 0; } catch(_){}
+    if (Date.now() - last < 30000) return;
+
+    function checkFreshness(){
+      try {
+        var url = './app.html?fresh=' + Date.now();
+        fetch(url, { cache: 'no-store' }).then(function(r){ return r.text(); }).then(function(html){
+          var m = html.match(/__PP_BUILD__='([^']+)'/);
+          var LIVE = m ? m[1].trim() : '';
+          if (!LIVE || LIVE === RUNNING) return; // already newest
+          // A newer build exists but we're running an old cached copy → force refresh.
+          try { localStorage.setItem(LOOP_KEY, String(Date.now())); } catch(_){}
+          var done = function(){ try { window.location.reload(); } catch(_){ try { window.location.href = './app.html?fresh=' + Date.now(); } catch(__){} } };
+          var jobs = [];
+          try { if (window.caches && caches.keys) jobs.push(caches.keys().then(function(ks){ return Promise.all(ks.map(function(k){ return caches.delete(k); })); })); } catch(_){}
+          try { if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){ return Promise.all(rs.map(function(rg){ return rg.unregister(); })); })); } catch(_){}
+          Promise.all(jobs).then(done, done);
+          // Safety net in case the promises hang.
+          setTimeout(done, 2500);
+        }).catch(function(){ /* offline — keep current build */ });
+      } catch(_){}
+    }
+
+    if (document.readyState === 'complete') checkFreshness();
+    else window.addEventListener('load', checkFreshness);
+    // Re-check when the installed app is reopened / brought to foreground.
+    document.addEventListener('visibilitychange', function(){
+      if (document.visibilityState === 'visible'){
+        var l2 = 0; try { l2 = parseInt(localStorage.getItem(LOOP_KEY) || '0', 10) || 0; } catch(_){}
+        if (Date.now() - l2 >= 30000) checkFreshness();
+      }
+    });
+  } catch(e){ /* never let the guard break the app */ }
 })();
 </script>
 <meta name="description" content="A fun savings tracker for kids — reveal a puzzle picture piece by piece as you save toward your goal!">
