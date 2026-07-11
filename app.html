@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T09:20Z-v72';</script>
+<script>window.__PP_BUILD__='2026-07-11T09:35Z-v73';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -883,6 +883,7 @@ a { color: inherit; text-decoration: none; }
 .pp32-count-pill { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; border-radius:var(--radius-full); background: var(--purple-100, #F0ECF7); color: var(--purple-700, #6A4C96); font-size:0.72rem; font-weight:700; letter-spacing:0; }
 .pp32-section-action { font-size:0.8rem; color: var(--purple-600, #7B5AA8); text-decoration:none; font-weight:600; cursor:pointer; letter-spacing:0; text-transform:none; padding:4px 10px; border-radius:var(--radius-full); border:1px solid var(--purple-200,#E2DAF0); transition: background 0.15s, border-color 0.15s; }
 .pp32-section-action:hover { background: var(--purple-50,#F9F7FC); border-color: var(--purple-300,#CBBFE5); }
+
 /* v66.1: Chores as its own card so the collapsed header is easy to see and tap. */
 .pp32-chores-card { background: var(--surface); border:1px solid var(--border); border-radius:16px; box-shadow: var(--shadow-sm); overflow:hidden; margin: var(--space-3) 0; }
 .pp32-chores-card-head { display:flex; align-items:center; justify-content:space-between; padding:16px 18px; cursor:pointer; user-select:none; background: var(--surface); border-bottom:1px solid var(--border); transition: background 0.15s; }
@@ -996,6 +997,36 @@ a { color: inherit; text-decoration: none; }
 .pp32-modal-actions .btn { flex: 1; }
 @keyframes pp32fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pp32slide { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* ===== v73 MATURE-A: purple gradient header + grown-up neutral cards (placed last so it wins the cascade) ===== */
+.pp32-page { background:#F7F6F9; }
+/* Signature purple header band (bleeds to page edges) */
+.pp32-pagehead { margin:0 calc(-1 * var(--space-3)) var(--space-5); padding:26px 22px; background:linear-gradient(135deg,#5C4287 0%,#6A4C96 55%,#7B5AA8 100%); border-radius:0 0 20px 20px; box-shadow:0 4px 16px rgba(92,66,135,0.20); align-items:center; }
+@media (min-width: 720px){ .pp32-pagehead { margin:0 calc(-1 * var(--space-5)) var(--space-5); } }
+.pp32-pagehead h2 { color:#fff; font-size:1.55rem; }
+.pp32-pagehead-sub { color:rgba(255,255,255,0.78); }
+.pp32-back-btn { color:#fff; }
+.pp32-back-btn:hover { background:rgba(255,255,255,0.14); }
+/* Quiet section labels */
+.pp32-section-label { color:#8B8792; letter-spacing:1px; }
+.pp32-count-pill { background:#EFEAF6; color:#5C4287; }
+/* Add-child: outlined neutral, not loud, not amber */
+.pp32-section-action { color:#5C4287; border:1px solid #DFD6EC; background:#fff; }
+.pp32-section-action:hover { background:#F7F4FB; border-color:#CBBFE5; }
+/* Kid cards: clean white, calm shadow, no accent stripe */
+.pp32-kid { border:1px solid #ECEAF0; border-radius:14px; box-shadow:0 1px 3px rgba(30,20,45,0.05); }
+.pp32-kid-name { color:#1E1428; }
+/* Earned pill: muted neutral, understated */
+.pp32-pill-earned { background:#F1F0F4; color:#4A4553; border-color:#E5E3EA; font-weight:600; }
+/* Unified restrained cards (match kid-card radius/shadow) */
+.pp32-chores-card { border:1px solid #ECEAF0; border-radius:14px; box-shadow:0 1px 3px rgba(30,20,45,0.05); }
+.pp32-pin-row { border:1px solid #ECEAF0; border-radius:14px; box-shadow:0 1px 3px rgba(30,20,45,0.05); }
+.pp32-chores-card-head { background:#fff; }
+.pp32-chores-card-title { color:#1E1428; }
+.pp32-chores-card-title svg { color:#7B5AA8; }
+.pp32-pin-icon { background:#EFEAF6; color:#5C4287; border-radius:10px; }
+.pp32-pin-title { color:#1E1428; }
+/* ===== END v73 MATURE-A ===== */
 /* ===== END v=32 ===== */
 .parent-chore-item {
   display: flex; align-items: center; gap: var(--space-3);
