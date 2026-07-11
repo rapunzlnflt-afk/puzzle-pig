@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T09:35Z-v73';</script>
+<script>window.__PP_BUILD__='2026-07-11T09:45Z-v74';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -999,32 +999,33 @@ a { color: inherit; text-decoration: none; }
 @keyframes pp32slide { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
 /* ===== v73 MATURE-A: purple gradient header + grown-up neutral cards (placed last so it wins the cascade) ===== */
-.pp32-page { background:#F7F6F9; }
-/* Signature purple header band (bleeds to page edges) */
-.pp32-pagehead { margin:0 calc(-1 * var(--space-3)) var(--space-5); padding:26px 22px; background:linear-gradient(135deg,#5C4287 0%,#6A4C96 55%,#7B5AA8 100%); border-radius:0 0 20px 20px; box-shadow:0 4px 16px rgba(92,66,135,0.20); align-items:center; }
+/* v74: deeper page tint, stronger gradient, left accent stripes, more card shadow */
+.pp32-page { background:#EFEBF5; }
+/* Signature purple header band (bleeds to page edges) — deeper, richer gradient */
+.pp32-pagehead { margin:0 calc(-1 * var(--space-3)) var(--space-5); padding:28px 22px; background:linear-gradient(135deg,#4A3570 0%,#5C4287 50%,#7B5AA8 100%); border-radius:0 0 22px 22px; box-shadow:0 6px 22px rgba(74,53,112,0.30); align-items:center; }
 @media (min-width: 720px){ .pp32-pagehead { margin:0 calc(-1 * var(--space-5)) var(--space-5); } }
 .pp32-pagehead h2 { color:#fff; font-size:1.55rem; }
-.pp32-pagehead-sub { color:rgba(255,255,255,0.78); }
+.pp32-pagehead-sub { color:rgba(255,255,255,0.80); }
 .pp32-back-btn { color:#fff; }
-.pp32-back-btn:hover { background:rgba(255,255,255,0.14); }
+.pp32-back-btn:hover { background:rgba(255,255,255,0.16); }
 /* Quiet section labels */
-.pp32-section-label { color:#8B8792; letter-spacing:1px; }
-.pp32-count-pill { background:#EFEAF6; color:#5C4287; }
+.pp32-section-label { color:#7A7684; letter-spacing:1px; }
+.pp32-count-pill { background:#E4DBF2; color:#5C4287; }
 /* Add-child: outlined neutral, not loud, not amber */
-.pp32-section-action { color:#5C4287; border:1px solid #DFD6EC; background:#fff; }
-.pp32-section-action:hover { background:#F7F4FB; border-color:#CBBFE5; }
-/* Kid cards: clean white, calm shadow, no accent stripe */
-.pp32-kid { border:1px solid #ECEAF0; border-radius:14px; box-shadow:0 1px 3px rgba(30,20,45,0.05); }
+.pp32-section-action { color:#5C4287; border:1px solid #D3C7E8; background:#fff; }
+.pp32-section-action:hover { background:#F7F4FB; border-color:#BCA9DE; }
+/* Kid cards: white with a purple left accent stripe + deeper shadow */
+.pp32-kid { border:1px solid #E4DEEE; border-radius:14px; box-shadow:0 6px 18px rgba(74,53,112,0.12), 0 2px 5px rgba(74,53,112,0.08); border-left:4px solid #7B5AA8; }
 .pp32-kid-name { color:#1E1428; }
 /* Earned pill: muted neutral, understated */
 .pp32-pill-earned { background:#F1F0F4; color:#4A4553; border-color:#E5E3EA; font-weight:600; }
-/* Unified restrained cards (match kid-card radius/shadow) */
-.pp32-chores-card { border:1px solid #ECEAF0; border-radius:14px; box-shadow:0 1px 3px rgba(30,20,45,0.05); }
-.pp32-pin-row { border:1px solid #ECEAF0; border-radius:14px; box-shadow:0 1px 3px rgba(30,20,45,0.05); }
+/* Unified cards: matching left accent stripe + deeper shadow */
+.pp32-chores-card { border:1px solid #E4DEEE; border-radius:14px; box-shadow:0 6px 18px rgba(74,53,112,0.12), 0 2px 5px rgba(74,53,112,0.08); border-left:4px solid #7B5AA8; }
+.pp32-pin-row { border:1px solid #E4DEEE; border-radius:14px; box-shadow:0 6px 18px rgba(74,53,112,0.12), 0 2px 5px rgba(74,53,112,0.08); border-left:4px solid #7B5AA8; }
 .pp32-chores-card-head { background:#fff; }
 .pp32-chores-card-title { color:#1E1428; }
 .pp32-chores-card-title svg { color:#7B5AA8; }
-.pp32-pin-icon { background:#EFEAF6; color:#5C4287; border-radius:10px; }
+.pp32-pin-icon { background:#E4DBF2; color:#5C4287; border-radius:10px; }
 .pp32-pin-title { color:#1E1428; }
 /* ===== END v73 MATURE-A ===== */
 /* ===== END v=32 ===== */
