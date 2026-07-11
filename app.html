@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T04:00Z-v60';</script>
+<script>window.__PP_BUILD__='2026-07-11T05:00Z-v61';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -1235,6 +1235,15 @@ a { color: inherit; text-decoration: none; }
   font-family: var(--font-display); font-weight: 600; font-size: 0.95rem; margin-bottom: var(--space-3);
   display: flex; align-items: center; gap: var(--space-2);
 }
+/* v61: collapsible chore lists */
+.chore-collapse-toggle { cursor: pointer; user-select: none; }
+.chore-collapse-chevron {
+  margin-left: auto; transition: transform 0.2s ease; flex-shrink: 0;
+  color: var(--text-muted);
+}
+.chore-collapse-toggle.collapsed { margin-bottom: 0; }
+.chore-collapse-toggle.collapsed .chore-collapse-chevron { transform: rotate(-90deg); }
+.chore-collapse-body.collapsed { display: none; }
 .home-chore-item {
   display: flex; align-items: center; justify-content: space-between; padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border);
@@ -3329,6 +3338,24 @@ function showView(viewId) {
 }
 
 // ---- Render Home ----
+// v61: collapsible chore lists. State persisted per section key in localStorage.
+function ppIsChoreSectionCollapsed(key){
+  try { return localStorage.getItem('pp_chore_collapsed_' + key) === '1'; } catch(_){ return false; }
+}
+function ppToggleChoreSection(key, headerEl){
+  try {
+    const collapsed = !ppIsChoreSectionCollapsed(key);
+    localStorage.setItem('pp_chore_collapsed_' + key, collapsed ? '1' : '0');
+    if (headerEl){
+      headerEl.classList.toggle('collapsed', collapsed);
+      const body = headerEl.nextElementSibling;
+      if (body && body.classList.contains('chore-collapse-body')) body.classList.toggle('collapsed', collapsed);
+    }
+  } catch(_){}
+}
+try { window.ppToggleChoreSection = ppToggleChoreSection; window.ppIsChoreSectionCollapsed = ppIsChoreSectionCollapsed; } catch(_){}
+const PP_CHEVRON_SVG = '<svg class="chore-collapse-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>';
+
 function renderHome() {
   // v55: pull the freshest assigned-chore set from the merged store so
   // parent-added chores always appear even if the initial pull raced the
@@ -3411,7 +3438,8 @@ function renderHome() {
         }
         return `<div class="home-chore-item"><div class="home-chore-info"><div class="home-chore-name">${esc(c.name)}</div><div class="home-chore-amount">$${fmtNum(c.amount)}</div></div>${actionHTML}</div>`;
       }).join('');
-      homeChoresEl.innerHTML = `<div class="home-chores"><div class="home-chores-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12l2 2 4-4"/></svg> Today's Chores</div>${choreItems}</div>`;
+      const _kidCollapsed = ppIsChoreSectionCollapsed('kidToday');
+      homeChoresEl.innerHTML = `<div class="home-chores"><div class="home-chores-title chore-collapse-toggle${_kidCollapsed ? ' collapsed' : ''}" onclick="ppToggleChoreSection('kidToday', this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12l2 2 4-4"/></svg> Today's Chores${PP_CHEVRON_SVG}</div><div class="chore-collapse-body${_kidCollapsed ? ' collapsed' : ''}">${choreItems}</div></div>`;
       homeChoresEl.style.display = '';
     } else {
       homeChoresEl.style.display = 'none';
@@ -4776,10 +4804,11 @@ async function renderParentSettings(opts) {
         ${noChildrenHTML}${childCards}
       </div>
 
-      <div class="pp32-section-label">
+      <div class="pp32-section-label chore-collapse-toggle${ppIsChoreSectionCollapsed('parentChores') ? ' collapsed' : ''}" style="cursor:pointer;" onclick="ppToggleChoreSection('parentChores', this)">
         <span>Chores${allChoresGlobal.length > 0 ? ' ('+allChoresGlobal.length+')' : ''}</span>
+        ${PP_CHEVRON_SVG}
       </div>
-      <div class="pp32-chores-box">
+      <div class="pp32-chores-box chore-collapse-body${ppIsChoreSectionCollapsed('parentChores') ? ' collapsed' : ''}">
         <div class="pp32-chore-headers">
           <div class="col-main">Chore</div>
           <div class="col-assigned">Assigned</div>
@@ -7861,6 +7890,8 @@ init();
         }
       }
       safeRerender();
+      // v61: after every pull, heal any approved chore that never credited the child's goal
+      try { if (typeof reconcileGoalsFromApprovedLogs === 'function') await reconcileGoalsFromApprovedLogs(); } catch(_){}
     } catch(e){
       console.warn('[PuzzlePig sync] pullAndMerge exception', e);
     }
@@ -8246,6 +8277,84 @@ init();
     } catch(_){}
   }
   try { window.creditKidJarFromApprovedLog = creditKidJarFromApprovedLog; } catch(_){}
+
+  // ---------- v61: self-healing goal reconcile ----------
+  // Goals live only on each device's local store (never synced). A goal is only
+  // credited when the child's device observes a chore-log transition to 'approved'
+  // in realtime. If the child's app is closed when the PARENT approves, the child's
+  // device later boots with the log ALREADY approved (no transition) — so the goal
+  // was never credited even though the (synced) Save-jar balance went up. This pass
+  // walks every approved log for the current child and credits any that a dedicated,
+  // idempotent set says were never applied to a goal. GOAL-ONLY (never touches jar
+  // balances) so it can't double-count money. Add-only: it never removes credit.
+  const GOAL_CREDITED_LOGS_KEY = 'pp_goal_credited_log_ids';
+  function _getGoalCreditedLogIds(){
+    try { return new Set(JSON.parse(localStorage.getItem(GOAL_CREDITED_LOGS_KEY) || '[]')); }
+    catch(_) { return new Set(); }
+  }
+  function _markGoalCredited(id){
+    try {
+      const s = _getGoalCreditedLogIds(); s.add(id);
+      const arr = Array.from(s); const trimmed = arr.slice(-1000);
+      localStorage.setItem(GOAL_CREDITED_LOGS_KEY, JSON.stringify(trimmed));
+    } catch(_){}
+  }
+  // One-time seed: the OLD realtime path (creditKidJarFromApprovedLog) credited the
+  // jar AND goal together and recorded the log in pp_credited_log_ids. So any log
+  // already in that set had its goal credited too — seed those into the goal set so
+  // this reconcile never re-credits them. Runs once per device.
+  const GOAL_SEED_DONE_KEY = 'pp_goal_credit_seed_done';
+  function _seedGoalCreditedFromJarSet(){
+    try {
+      if (localStorage.getItem(GOAL_SEED_DONE_KEY) === '1') return;
+      const jarSet = _getCreditedLogIds();               // from the existing jar-credit path
+      const goalSet = _getGoalCreditedLogIds();
+      let changed = false;
+      jarSet.forEach(id => { if (!goalSet.has(id)) { goalSet.add(id); changed = true; } });
+      if (changed){
+        const arr = Array.from(goalSet).slice(-1000);
+        localStorage.setItem(GOAL_CREDITED_LOGS_KEY, JSON.stringify(arr));
+      }
+      localStorage.setItem(GOAL_SEED_DONE_KEY, '1');
+    } catch(_){}
+  }
+  async function reconcileGoalsFromApprovedLogs(){
+    try {
+      if (typeof role !== 'undefined' && role === 'parent') return; // only the child's device owns the child's goals
+      if (typeof currentUserId === 'undefined' || !currentUserId) return;
+      if (typeof creditGoalsForUser !== 'function' || typeof dbGetAll !== 'function') return;
+      _seedGoalCreditedFromJarSet();
+      const logs = (typeof _memChoreLogs !== 'undefined' && Array.isArray(_memChoreLogs)) ? _memChoreLogs : [];
+      const credited = _getGoalCreditedLogIds();
+      // Approved logs for THIS child that were never applied to a goal, oldest first.
+      const pending = logs
+        .filter(l => l && l.status === 'approved' && l.userId === currentUserId && !credited.has(l.id))
+        .sort((a,b) => new Date(a.approvedAt || a.date || 0) - new Date(b.approvedAt || b.date || 0));
+      if (!pending.length) return;
+      for (const cl of pending){
+        // Resolve amount: synced log carries _amount; fall back to the chore record.
+        let amount = Number(cl._amount) || 0;
+        if ((!amount || amount <= 0) && typeof _memChores !== 'undefined'){
+          const ch = _memChores.find(c => c.id === cl.choreId);
+          amount = Number(ch && ch.amount) || 0;
+        }
+        // Mark BEFORE work so a mid-pass error can't cause a double credit on retry.
+        _markGoalCredited(cl.id);
+        if (!amount || amount <= 0) continue; // nothing to credit, but stays marked
+        const allGoalsNow = await dbGetAll();
+        const userGoals = allGoalsNow.filter(g => g.userId === currentUserId);
+        if (!userGoals.length) continue;
+        const note = 'Chore: ' + (cl._choreName || 'Chore');
+        await creditGoalsForUser(amount, (cl.approvedAt || new Date().toISOString()), note, userGoals);
+        console.log('[PuzzlePig v61] goal-reconciled approved log', cl.id, '+$' + amount);
+      }
+      // Keep the Save-jar balance defined as the sum of goal history.
+      try { if (typeof syncSaveJarBalance === 'function') await syncSaveJarBalance(); } catch(_){}
+      try { if (typeof renderHome === 'function') renderHome(); } catch(_){}
+      try { if (typeof renderPuzzle === 'function' && typeof currentGoalId !== 'undefined' && currentGoalId) renderPuzzle(); } catch(_){}
+    } catch(e){ console.warn('[PuzzlePig v61] reconcileGoalsFromApprovedLogs failed', e); }
+  }
+  try { window.reconcileGoalsFromApprovedLogs = reconcileGoalsFromApprovedLogs; } catch(_){}
 
   // ---------- parent toast ----------
   // Combined toast: shows total pending count across all kids. Tap to jump to parent settings.
