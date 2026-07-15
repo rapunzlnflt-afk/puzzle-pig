@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-11T09:55Z-v75';</script>
+<script>window.__PP_BUILD__='2026-07-15T06:05Z-v76';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -5593,6 +5593,49 @@ function showEncouragement(amount, customMsg) {
 function lockParent() {
   parentUnlocked = false;
 }
+
+/* v76: Auto-relock the parent session. A home-screen PWA keeps its JS context
+ * alive across app opens, so `parentUnlocked` would stay true forever and the
+ * PIN was never re-asked. We now relock when the app is backgrounded for more
+ * than a short grace period, so reopening the parent app requires the PIN again.
+ * A short grace (45s) avoids nagging on quick app-switches (e.g. copying a code). */
+(function(){
+  var PP_RELOCK_GRACE_MS = 45 * 1000; // relock if hidden longer than this
+  var _hiddenAt = 0;
+  function _parentViewShowing(){
+    var pv = document.getElementById('parentSettingsView');
+    return pv && pv.style.display !== 'none' && pv.offsetParent !== null;
+  }
+  function _onHidden(){
+    // Only track when a parent is actually unlocked; nothing to protect otherwise.
+    if (parentUnlocked) _hiddenAt = Date.now();
+  }
+  function _onVisible(){
+    if (!_hiddenAt) return;
+    var away = Date.now() - _hiddenAt;
+    _hiddenAt = 0;
+    if (!parentUnlocked) return;
+    if (away < PP_RELOCK_GRACE_MS) return; // quick switch — stay unlocked
+    // Been away long enough: relock and get out of any parent screen.
+    lockParent();
+    try {
+      var inParent = _parentViewShowing();
+      if (document.body.classList.contains('pp-parent-mode')) {
+        // Dedicated parent device: can't drop to avatar picker — re-ask the PIN.
+        if (inParent) requestPinFor('open-parent-settings');
+      } else if (inParent) {
+        // Shared device: back off to the safe avatar picker; PIN required to re-enter.
+        switchUser();
+      }
+    } catch(e){ console.warn('[PuzzlePig] relock redirect failed', e); }
+  }
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'hidden') _onHidden();
+    else if (document.visibilityState === 'visible') _onVisible();
+  });
+  window.addEventListener('pagehide', _onHidden);
+  window.addEventListener('focus', _onVisible);
+})();
 
 // ---- Celebration ----
 let celebratingGoalId = null;
