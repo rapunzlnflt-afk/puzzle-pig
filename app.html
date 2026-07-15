@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-15T21:35Z-v84';</script>
+<script>window.__PP_BUILD__='2026-07-15T21:50Z-v85';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -5374,7 +5374,7 @@ async function pp32BuildKidHistoryHTML(userId, bare){
       case 'transfer': return 'Transfer';
       case 'deposit': return 'Added';
       case 'withdraw': return 'Withdrawn';
-      case 'restore': return 'Balance catch-up';
+      case 'restore': return 'Synced from backup';
       case 'buy': return 'Purchase';
       case 'goal': return 'Goal';
       case 'leftover': return 'Leftover';
@@ -5395,11 +5395,11 @@ async function pp32BuildKidHistoryHTML(userId, bare){
         // re-sync). Show it distinctly: an amber "catch-up" pill + a plain-English
         // primary line, so it never reads like a chore the child completed.
         const _isRestore = tx.type === 'restore';
-        const _primary = _isRestore ? 'Balance catch-up' : esc(tx.note || label);
+        const _primary = _isRestore ? 'Synced from backup' : esc(tx.note || label);
         const _pill = _isRestore
-          ? ` <span style="display:inline-block;font-size:0.6rem;font-weight:700;letter-spacing:.02em;color:#92400E;background:#FEF3C7;border-radius:999px;padding:1px 7px;vertical-align:middle;">CATCH-UP</span>`
+          ? ` <span style="display:inline-block;font-size:0.6rem;font-weight:700;letter-spacing:.02em;color:#92400E;background:#FEF3C7;border-radius:999px;padding:1px 7px;vertical-align:middle;">SYNCED</span>`
           : '';
-        const _sub = _isRestore ? 'Automatic top-up to match saved balance' : label;
+        const _sub = _isRestore ? 'Added back to match your cloud backup' : label;
         return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
             <div style="flex:1;min-width:0;">
               <div style="font-size:0.88rem;">${_primary}${_pill}</div>
@@ -6200,13 +6200,13 @@ function renderJarDetail() {
         const _isRestore = tx.type === 'restore';
         const typeLabel = tx.type === 'chore' ? 'Chore'
           : tx.type === 'transfer' ? 'Transfer'
-          : _isRestore ? 'Balance catch-up'
+          : _isRestore ? 'Synced from backup'
           : 'Manual';
-        const _primary = _isRestore ? 'Balance catch-up' : esc(tx.note || typeLabel);
+        const _primary = _isRestore ? 'Synced from backup' : esc(tx.note || typeLabel);
         const _pill = _isRestore
-          ? ` <span style="display:inline-block;font-size:0.6rem;font-weight:700;letter-spacing:.02em;color:#92400E;background:#FEF3C7;border-radius:999px;padding:1px 7px;vertical-align:middle;">CATCH-UP</span>`
+          ? ` <span style="display:inline-block;font-size:0.6rem;font-weight:700;letter-spacing:.02em;color:#92400E;background:#FEF3C7;border-radius:999px;padding:1px 7px;vertical-align:middle;">SYNCED</span>`
           : '';
-        const _sub = _isRestore ? 'Automatic top-up to match saved balance' : typeLabel;
+        const _sub = _isRestore ? 'Added back to match your cloud backup' : typeLabel;
         return `
           <div class="jar-tx-item" style="display:flex;align-items:center;gap:8px;">
             <div style="flex:1;min-width:0;">
