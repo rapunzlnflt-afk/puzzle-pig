@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-15T20:40Z-v81';</script>
+<script>window.__PP_BUILD__='2026-07-15T21:00Z-v82';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -1360,6 +1360,9 @@ a { color: inherit; text-decoration: none; }
 }
 .home-chore-done.pending { background: #FEF3C7; color: #92400E; }
 .home-chore-done.completed { background: #D1FAE5; color: #065F46; }
+/* Faded 'waiting' badge for a chore back-dated to a previous day */
+.home-chore-backdated { display:inline-flex; align-items:center; gap:4px; font-size:0.7rem; font-weight:600; padding:3px 8px; border-radius:999px; background:#FEF3C7; color:#92400E; opacity:0.6; margin-left:6px; white-space:nowrap; }
+.chore-backdated-note { margin-top:6px; font-size:0.78rem; font-weight:600; color:#92400E; background:#FEF3C7; opacity:0.6; padding:5px 10px; border-radius:10px; display:inline-block; }
 
 /* ============ USER SELECT SCREEN ============ */
 #userSelectScreen {
@@ -3546,6 +3549,15 @@ function renderHome() {
           ? choreLogs.some(cl => cl.choreId === c.id && cl.status === 'pending' && cl.date === todayStr)
           : choreLogs.some(cl => cl.choreId === c.id && cl.status === 'pending');
         const isDoneToday = choreLogs.some(cl => cl.choreId === c.id && cl.status === 'approved' && cl.date === todayStr);
+        // Back-dated pending logs (waiting on a previous day) — show a faded badge.
+        const backdatedPending = perDay
+          ? choreLogs.filter(cl => cl.choreId === c.id && cl.status === 'pending' && cl.date !== todayStr)
+          : [];
+        let backdatedHTML = '';
+        if (backdatedPending.length) {
+          const days = backdatedPending.map(cl => _ppShortDayFromIso(cl.date)).join(', ');
+          backdatedHTML = `<span class="home-chore-backdated">⏳ ${esc(days)}</span>`;
+        }
         let isDoneThisWeek = false;
         if (c.recurring === 'weekly') {
           const day = today.getDay();
@@ -3566,7 +3578,7 @@ function renderHome() {
         } else {
           actionHTML = `<button class="chore-did-it-btn" onclick="choreDidIt('${c.id}')" style="width:auto;font-size:0.8rem;padding:6px 14px;flex-shrink:0;box-shadow:var(--shadow-sm);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> I Did It!</button>`;
         }
-        return `<div class="home-chore-item"><div class="home-chore-info"><div class="home-chore-name">${esc(c.name)}</div><div class="home-chore-amount">$${fmtNum(c.amount)}</div></div>${actionHTML}</div>`;
+        return `<div class="home-chore-item"><div class="home-chore-info"><div class="home-chore-name">${esc(c.name)}</div><div class="home-chore-amount">$${fmtNum(c.amount)}</div></div>${actionHTML}${backdatedHTML}</div>`;
       }).join('');
       const _kidCollapsed = ppIsChoreSectionCollapsed('kidToday');
       homeChoresEl.innerHTML = `<div class="home-chores"><div class="home-chores-title chore-collapse-toggle${_kidCollapsed ? ' collapsed' : ''}" onclick="ppToggleChoreSection('kidToday', this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12l2 2 4-4"/></svg> Today's Chores${PP_CHEVRON_SVG}</div><div class="chore-collapse-body${_kidCollapsed ? ' collapsed' : ''}">${choreItems}</div></div>`;
@@ -6685,6 +6697,14 @@ function renderChoresView() {
       });
     }
 
+    // Back-dated pending logs (waiting on a previous day) for per-day chores.
+    const _backdated = _perDay
+      ? choreLogs.filter(cl => cl.choreId === c.id && cl.status === 'pending' && cl.date !== today)
+      : [];
+    const _backdatedNote = _backdated.length
+      ? `<div class="chore-backdated-note">⏳ Waiting for approval · ${esc(_backdated.map(cl => _ppShortDayFromIso(cl.date)).join(', '))}</div>`
+      : '';
+
     let actionHTML;
     if (hasPending) {
       actionHTML = `<div class="chore-pending-note">Waiting for parent approval...</div>`;
@@ -6696,6 +6716,7 @@ function renderChoresView() {
         I Did It!
       </button>`;
     }
+    actionHTML = actionHTML + _backdatedNote;
 
     return `
       <div class="chore-card">
@@ -7116,6 +7137,20 @@ function _ppDayLabel(daysAgo, dateObj) {
   const wd = dateObj.toLocaleDateString(undefined, { weekday: 'long' });
   const md = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   return `${wd}, ${md}`;
+}
+
+// Short friendly label from a YYYY-MM-DD string (e.g. 'Yesterday' or 'Mon Jul 13').
+// Used for the faded 'waiting for <day>' badge on back-dated chores.
+function _ppShortDayFromIso(iso) {
+  try {
+    const parts = String(iso).split('-');
+    if (parts.length !== 3) return iso;
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    const today = new Date(); today.setHours(0,0,0,0);
+    const diff = Math.round((today - d) / 86400000);
+    if (diff === 1) return 'Yesterday';
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  } catch(_) { return iso; }
 }
 
 function openChoreDayModal(choreId) {
