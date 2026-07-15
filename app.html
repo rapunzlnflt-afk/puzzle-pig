@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-15T20:20Z-v80';</script>
+<script>window.__PP_BUILD__='2026-07-15T20:40Z-v81';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -3538,8 +3538,13 @@ function renderHome() {
     });
     if (todayChores.length > 0) {
       const choreItems = todayChores.map(c => {
-        // Check if already done today or this period
-        const isPending = choreLogs.some(cl => cl.choreId === c.id && cl.status === 'pending');
+        // Check if already done today or this period.
+        // For daily / specific-day chores, "pending" must be scoped to TODAY so a
+        // back-dated log for a previous day doesn't block today's completion.
+        const perDay = (c.recurring === 'daily' || c.recurring === 'specific');
+        const isPending = perDay
+          ? choreLogs.some(cl => cl.choreId === c.id && cl.status === 'pending' && cl.date === todayStr)
+          : choreLogs.some(cl => cl.choreId === c.id && cl.status === 'pending');
         const isDoneToday = choreLogs.some(cl => cl.choreId === c.id && cl.status === 'approved' && cl.date === todayStr);
         let isDoneThisWeek = false;
         if (c.recurring === 'weekly') {
@@ -6656,7 +6661,12 @@ function renderChoresView() {
       return ''; // don't show this chore today
     }
 
-    const hasPending = choreLogs.some(cl => cl.choreId === c.id && cl.status === 'pending');
+    // For daily / specific-day chores, scope "pending" to TODAY so a back-dated
+    // pending log for a previous day doesn't hide today's "I Did It!" button.
+    const _perDay = (c.recurring === 'daily' || c.recurring === 'specific');
+    const hasPending = _perDay
+      ? choreLogs.some(cl => cl.choreId === c.id && cl.status === 'pending' && cl.date === today)
+      : choreLogs.some(cl => cl.choreId === c.id && cl.status === 'pending');
     const todayApproved = choreLogs.filter(cl => cl.choreId === c.id && cl.status === 'approved' && cl.date === today);
     const isDoneToday = (c.recurring === 'daily' || c.recurring === 'specific') && todayApproved.length > 0;
     const isOnceCompleted = c.recurring === 'once' && choreLogs.some(cl => cl.choreId === c.id && cl.status === 'approved');
@@ -7137,6 +7147,12 @@ async function logChoreForDate(choreId, dateStr) {
   closeChoreDayModal();
   const chore = chores.find(c => c.id === choreId);
   if (!chore) return;
+  // Guard against logging the same chore twice for the same day (pending or already approved).
+  const dup = choreLogs.some(cl => cl.choreId === choreId && cl.date === dateStr && (cl.status === 'pending' || cl.status === 'approved'));
+  if (dup) {
+    try { alert('You already marked "' + chore.name + '" done for that day.'); } catch(_){}
+    return;
+  }
   const now = new Date().toISOString();
   const entry = {
     id: 'clog_' + Date.now(),
