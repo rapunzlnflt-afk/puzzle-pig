@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-15T06:05Z-v76';</script>
+<script>window.__PP_BUILD__='2026-07-15T19:15Z-v77';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -1973,7 +1973,7 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
 <div class="pin-overlay" id="pinOverlay">
   <div class="pin-modal">
     <h3 id="pinTitle">Parent PIN</h3>
-    <p id="pinSubtitle">Enter the 4-digit parent PIN</p>
+    <p id="pinSubtitle">Enter the 5-digit parent PIN</p>
     <div class="pin-input-row">
       <input type="password" class="pin-digit" maxlength="1" inputmode="numeric" pattern="[0-9]" data-idx="0" autocomplete="off">
       <input type="password" class="pin-digit" maxlength="1" inputmode="numeric" pattern="[0-9]" data-idx="1" autocomplete="off">
@@ -7593,6 +7593,31 @@ init();
   // ---------- module state ----------
   let familyId = localStorage.getItem(LS_FAMILY_ID) || null;
   let role     = localStorage.getItem(LS_ROLE)      || null;
+  // ---------- recovery shortcut: ?reset=1 ----------
+  // Safely detaches THIS device from its saved family/role and reloads to the
+  // setup screen, where the user can pick "Rejoin my family (I have a code)".
+  // Cloud data is never touched — this only clears this device's local link.
+  // e.g. app.html?reset=1
+  try {
+    const _reset = new URLSearchParams(location.search).get('reset');
+    if (_reset === '1' || _reset === 'true') {
+      try {
+        localStorage.removeItem(LS_FAMILY_ID);
+        localStorage.removeItem(LS_ROLE);
+        localStorage.removeItem(LS_CODE);
+        localStorage.removeItem(LS_KID_USER_ID);
+        localStorage.removeItem(LS_KID_RESET_TOKEN);
+      } catch(_){}
+      // Strip ?reset= from the URL so a refresh doesn't loop, then reload clean.
+      try {
+        const _u = new URL(location.href);
+        _u.searchParams.delete('reset');
+        location.replace(_u.pathname + _u.search + _u.hash);
+      } catch(_){ location.reload(); }
+      // Nothing else should run this load; the reload above takes over.
+      throw 'PP_RESET_RELOAD';
+    }
+  } catch(e){ if (e === 'PP_RESET_RELOAD') { /* intentional early-out */ } }
   // ---------- testing shortcut: ?role=kid | ?role=parent ----------
   // Lets you jump straight to the kid or parent side via the URL.
   // e.g. app.html?role=kid  or  app.html?role=parent
