@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-15T19:15Z-v77';</script>
+<script>window.__PP_BUILD__='2026-07-15T19:45Z-v78';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -1923,8 +1923,13 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
 
     <p id="kidPickStatus" style="margin-top:18px; font-size:13px; min-height:18px; opacity:0.92;"></p>
 
+    <button id="kidPickParentBtn" style="
+      margin-top:18px; background:rgba(255,255,255,0.16); color:#fff; border:1px solid rgba(255,255,255,0.45);
+      padding:12px 18px; font-size:14px; font-weight:600; border-radius:12px; cursor:pointer; font-family:inherit; display:block; width:100%; box-sizing:border-box;
+    ">I&rsquo;m the parent &rarr;</button>
+
     <button id="kidPickResetBtn" style="
-      margin-top:18px; background:transparent; color:rgba(255,255,255,0.75); border:1px solid rgba(255,255,255,0.35);
+      margin-top:12px; background:transparent; color:rgba(255,255,255,0.75); border:1px solid rgba(255,255,255,0.35);
       padding:10px 18px; font-size:13px; border-radius:10px; cursor:pointer; font-family:inherit;
     ">Not your family? Start over</button>
   </div>
@@ -9052,6 +9057,24 @@ init();
         location.reload();
       };
       resetBtn._wired = true;
+    }
+    // Wire the 'I'm the parent' button: detach this device from the kid role and
+    // reload straight to the Parent/Kid choice screen so a parent who landed here
+    // (e.g. after a reinstall) is never stranded. Their kids/balances stay safe
+    // in the cloud and reappear after they rejoin with the family code.
+    const parentBtn = document.getElementById('kidPickParentBtn');
+    if (parentBtn && !parentBtn._wired){
+      parentBtn.onclick = () => {
+        localStorage.removeItem(LS_ROLE);
+        localStorage.removeItem(LS_KID_USER_ID);
+        localStorage.removeItem(LS_KID_RESET_TOKEN);
+        // Keep LS_FAMILY_ID/LS_CODE so the choice screen can offer a quick rejoin,
+        // but clearing the role guarantees boot shows the choice screen.
+        localStorage.removeItem(LS_FAMILY_ID);
+        localStorage.removeItem(LS_CODE);
+        location.reload();
+      };
+      parentBtn._wired = true;
     }
     // Show the family code on the waiting screen so kid can confirm it matches parent's
     const hint = document.getElementById('kidPickFamilyHint');
