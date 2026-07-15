@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-15T19:45Z-v78';</script>
+<script>window.__PP_BUILD__='2026-07-15T20:00Z-v79';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -3097,6 +3097,8 @@ async function requestPinFor(action, extra) {
     else if (action === 'review-chores') { openReviewChoresModal(); }
     else if (action === 'delete-chore') { await doDeleteChore(savedExtra); }
     else if (action === 'save-chore') { await doSaveChore(); }
+    else if (action === 'approve') { await approveChoreFromParent(savedExtra && savedExtra.logId, (savedExtra && savedExtra.jarId) || ''); }
+    else if (action === 'reject') { await rejectChoreFromParent(savedExtra && savedExtra.logId); }
     else if (action === 'jar-edit-name') { jarEditName(savedExtra); }
     else if (action === 'jar-add-money') { jarAddMoney(savedExtra); }
     else if (action === 'jar-withdraw') { jarWithdraw(savedExtra); }
@@ -3222,6 +3224,10 @@ async function submitPin() {
     await doDeleteChore(savedExtra);
   } else if (action === 'save-chore') {
     await doSaveChore();
+  } else if (action === 'approve') {
+    await approveChoreFromParent(savedExtra && savedExtra.logId, (savedExtra && savedExtra.jarId) || '');
+  } else if (action === 'reject') {
+    await rejectChoreFromParent(savedExtra && savedExtra.logId);
   } else if (action === 'jar-edit-name') {
     jarEditName(savedExtra);
   } else if (action === 'jar-add-money') {
@@ -5272,6 +5278,9 @@ function restoreJarSelections(saved) {
 }
 
 async function approveChoreFromParent(logId, targetJarId) {
+  // PIN gate: approving moves money into a kid's jar, so require the parent PIN
+  // (once per session, like jar edits). If not yet unlocked, stash args and prompt.
+  if (!parentUnlocked) { requestPinFor('approve', { logId, jarId: targetJarId || '' }); return; }
   const jarSelections = saveJarSelections();
   const allLogs = await dbGetAllChoreLogs();
   const cl = allLogs.find(l => l.id === logId);
@@ -5316,6 +5325,8 @@ async function approveChoreFromParent(logId, targetJarId) {
 }
 
 async function rejectChoreFromParent(logId) {
+  // PIN gate (once per session, like jar edits).
+  if (!parentUnlocked) { requestPinFor('reject', { logId }); return; }
   const jarSelections = saveJarSelections();
   const allLogs = await dbGetAllChoreLogs();
   const cl = allLogs.find(l => l.id === logId);
@@ -7113,6 +7124,7 @@ function renderReviewChoresList() {
 }
 
 async function rejectChoreLog(logId) {
+  if (!parentUnlocked) { requestPinFor('reject', { logId }); return; }
   const cl = choreLogs.find(x => x.id === logId);
   if (!cl) return;
   cl.status = 'rejected';
@@ -7123,6 +7135,7 @@ async function rejectChoreLog(logId) {
 }
 
 async function approveChoreLog(logId) {
+  if (!parentUnlocked) { requestPinFor('approve', { logId, jarId: '' }); return; }
   const cl = choreLogs.find(x => x.id === logId);
   if (!cl) return;
   cl.status = 'approved';
