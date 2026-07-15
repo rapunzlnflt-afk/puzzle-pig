@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-15T20:00Z-v79';</script>
+<script>window.__PP_BUILD__='2026-07-15T20:20Z-v80';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -2322,6 +2322,18 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="closeJarAllocModal()">Cancel</button>
       <button class="btn btn-primary" onclick="confirmJarAlloc()" id="jarAllocConfirmBtn">Add to Jar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CHORE DAY PICKER (kid back-dates a missed chore) ===== -->
+<div class="modal-backdrop" id="choreDayModal">
+  <div class="modal">
+    <h3 id="choreDayTitle">When did you do it?</h3>
+    <p id="choreDaySubtitle" style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:var(--space-4);">Pick the day you finished this chore.</p>
+    <div id="choreDayButtons" style="display:flex; flex-direction:column; gap:var(--space-2);"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeChoreDayModal()">Cancel</button>
     </div>
   </div>
 </div>
@@ -4798,11 +4810,23 @@ async function renderParentSettings(opts) {
     // v=40: prefer total_saved synced from kid's device (true jar balance); fallback to chore-approved sum
     const totalEarned = (u.total_saved != null) ? Number(u.total_saved) : choreEarned;
 
+    const _todayIso = new Date().toISOString().split('T')[0];
     const pendingRows = userPending.map(cl => {
       const ch = allChoresGlobal.find(x => x.id === cl.choreId);
+      // Show a "for <day>" note when the kid back-dated the chore to a previous day.
+      let dayNote = '';
+      if (cl.date && cl.date !== _todayIso) {
+        const parts = String(cl.date).split('-');
+        let lbl = cl.date;
+        if (parts.length === 3) {
+          const dObj = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          lbl = dObj.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+        dayNote = ` <span class="amt" style="color:var(--amber-600,#D97706);font-weight:600;">for ${esc(lbl)}</span>`;
+      }
       return `
         <div class="pp32-pending-row">
-          <div class="name">${ch ? esc(ch.name) : 'Unknown chore'} <span class="amt">$${ch ? fmtNum(ch.amount) : '0'}</span></div>
+          <div class="name">${ch ? esc(ch.name) : 'Unknown chore'} <span class="amt">$${ch ? fmtNum(ch.amount) : '0'}</span>${dayNote}</div>
           <button class="btn pp32-btn-reject" onclick="event.stopPropagation();rejectChoreFromParent('${cl.id}')">Reject</button>
           <button class="btn pp32-btn-approve" onclick="event.stopPropagation();approveChoreFromParent('${cl.id}','')">Approve</button>
         </div>`;
@@ -7058,19 +7082,70 @@ async function doDeleteChore(id) {
   renderChoresView();
 }
 
-async function choreDidIt(choreId) {
+// When a kid taps "I Did It!", first ask WHICH day it was for, so they can catch
+// up on chores from previous days. Picking "Today" behaves exactly as before.
+function choreDidIt(choreId) {
+  const chore = chores.find(c => c.id === choreId);
+  if (!chore) return;
+  openChoreDayModal(choreId);
+}
+
+// Build a friendly local YYYY-MM-DD for an offset number of days ago (0 = today).
+function _ppDateForDaysAgo(daysAgo) {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return { iso: `${y}-${m}-${day}`, dateObj: d };
+}
+
+function _ppDayLabel(daysAgo, dateObj) {
+  if (daysAgo === 0) return 'Today';
+  if (daysAgo === 1) return 'Yesterday';
+  const wd = dateObj.toLocaleDateString(undefined, { weekday: 'long' });
+  const md = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `${wd}, ${md}`;
+}
+
+function openChoreDayModal(choreId) {
+  const chore = chores.find(c => c.id === choreId);
+  const container = document.getElementById('choreDayButtons');
+  const sub = document.getElementById('choreDaySubtitle');
+  if (!container) return;
+  if (sub) sub.textContent = chore ? `Pick the day you finished "${chore.name}".` : 'Pick the day you finished this chore.';
+  container.innerHTML = '';
+  // Offer today plus the last 6 days (7 buttons total).
+  for (let i = 0; i < 7; i++) {
+    const { iso, dateObj } = _ppDateForDaysAgo(i);
+    const label = _ppDayLabel(i, dateObj);
+    const btn = document.createElement('button');
+    btn.className = (i === 0) ? 'btn btn-primary' : 'btn btn-outline';
+    btn.style.width = '100%';
+    btn.textContent = label;
+    btn.onclick = () => logChoreForDate(choreId, iso);
+    container.appendChild(btn);
+  }
+  document.getElementById('choreDayModal').classList.add('active');
+}
+
+function closeChoreDayModal() {
+  document.getElementById('choreDayModal').classList.remove('active');
+}
+
+async function logChoreForDate(choreId, dateStr) {
+  closeChoreDayModal();
   const chore = chores.find(c => c.id === choreId);
   if (!chore) return;
   const now = new Date().toISOString();
-  const today = now.split('T')[0];
   const entry = {
     id: 'clog_' + Date.now(),
     userId: currentUserId,
     choreId,
     status: 'pending',
-    date: today,
+    date: dateStr,          // the day the kid says they did it (may be back-dated)
     approvedAt: null,
-    createdAt: now,
+    createdAt: now,         // when it was actually submitted
   };
   choreLogs.push(entry);
   await dbPutChoreLog(entry);
