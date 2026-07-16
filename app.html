@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-15T21:50Z-v85';</script>
+<script>window.__PP_BUILD__='2026-07-16T05:40Z-v86';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -4914,57 +4914,44 @@ async function renderParentSettings(opts) {
   const _visibleUsers = (users||[]).filter(u => u && u.name && String(u.name).trim());
 
   // v83: Make the parent's "earned" number always match the kid's true jar total,
-  // INCLUDING restored amounts. Two-part reconciliation, add-only / never-lower:
-  //   (1) Force-refresh each child's total_saved from the LIVE cloud record (not the
-  //       parent's possibly-stale last-synced copy), so a timing lag can't show an
-  //       out-of-date number.
-  //   (2) Cross-check against the shared LEDGER = approved chores + 'restore' txns.
-  //       Use the HIGHER of {cloud total_saved, ledger total, approved-chore sum} so a
-  //       restore is always reflected and a child's balance can never be shown lower
-  //       than what they've earned. Warn in the console if the sources disagree.
-  // Runs at most once every 4s per render pass (skipped on quiet background polls) to
-  // avoid hammering the network on the 5s parent poll.
+  // so the parent card shows the SAME number the child sees on their own screen.
+  //
+  // v85 FIX: the cloud `total_saved` is the SINGLE source of truth for a child's
+  // current balance. It already reflects everything — chores earned AND any
+  // reconciliations. A 'restore'/'Synced from backup' txn is NOT extra earnings; it
+  // only tops a device back UP to `total_saved`. The earlier v83 logic added chores
+  // + restores together as a "ledger" and took the max, which DOUBLE-COUNTED the same
+  // money (e.g. chores $43 + restores $68 = $111 shown, when the true balance is $68).
+  //
+  // Correct rule (add-only / never-lower, no double count):
+  //   show = max(cloud total_saved, approved-chore sum)
+  // Cloud is authoritative; the approved-chore sum is ONLY a floor so a balance can
+  // never display below what the child clearly earned. Restores/deposits are already
+  // baked into cloud total_saved and are NOT summed again.
+  // Runs at most once every 4s per render pass (skipped on quiet background polls).
   try {
     const _needRefresh = opts.force || !window._ppTotalsFreshAt || (Date.now() - window._ppTotalsFreshAt) > 4000;
     if (_needRefresh && window.ppSync && typeof window.ppSync.getCloudTotal === 'function') {
       await Promise.all(_visibleUsers.map(async (u) => {
         try {
-          // (1) live cloud total_saved
+          // Authoritative: live cloud total_saved.
           let cloudTotal = null;
           try { cloudTotal = await window.ppSync.getCloudTotal(u.id); } catch(_){}
-          // (2) ledger total from the shared cloud transactions: approved chore credits
-          //     + restores. (Withdrawals/spends are negative txns and are intentionally
-          //     EXCLUDED here — this is an "earned" figure, matching how total_saved and
-          //     the kid jar total are built up.)
-          let ledgerTotal = null;
-          if (typeof window.ppSync.fetchTransactionsForUser === 'function') {
-            try {
-              const _txns = await window.ppSync.fetchTransactionsForUser(u.id);
-              if (Array.isArray(_txns)) {
-                ledgerTotal = Math.round(_txns.reduce((s, t) => {
-                  if (!t) return s;
-                  const a = Number(t.amount) || 0;
-                  if (t.type === 'chore' || t.type === 'restore' || t.type === 'deposit') return s + a;
-                  return s;
-                }, 0) * 100) / 100;
-              }
-            } catch(_){}
-          }
-          // (add-only) approved-chore sum as a floor
+          // Floor only: sum of this child's APPROVED chores (never show below this).
           const _uApproved = allChoreLogsGlobal.filter(cl => cl.userId === u.id && cl.status === 'approved');
           const _choreEarned = _uApproved.reduce((sum, cl) => {
             const ch = allChoresGlobal.find(x => x.id === cl.choreId);
             return sum + (ch ? (Number(ch.amount)||0) : 0);
           }, 0);
-          const _candidates = [cloudTotal, ledgerTotal, _choreEarned, (u.total_saved != null ? Number(u.total_saved) : null)]
+          const _candidates = [cloudTotal, _choreEarned, (u.total_saved != null ? Number(u.total_saved) : null)]
             .filter(v => v != null && !isNaN(v));
           if (_candidates.length) {
             const _resolved = Math.max.apply(null, _candidates);
-            // Warn (non-fatal) if cloud and ledger disagree — surfaces future drift.
-            if (cloudTotal != null && ledgerTotal != null && Math.abs(cloudTotal - ledgerTotal) > 0.005) {
-              console.warn('[PuzzlePig] parent/kid total mismatch for', u.name, u.id,
-                '| cloud', cloudTotal, '| ledger(chores+restores)', ledgerTotal,
-                '| approvedChores', _choreEarned, '| showing', _resolved);
+            // Warn (non-fatal) if the approved-chore floor exceeds cloud — would mean the
+            // cloud is behind and a real sync is needed; surfaces genuine drift.
+            if (cloudTotal != null && _choreEarned > cloudTotal + 0.005) {
+              console.warn('[PuzzlePig] approved chores exceed cloud total for', u.name, u.id,
+                '| cloud', cloudTotal, '| approvedChores', _choreEarned, '| showing', _resolved);
             }
             u.total_saved = _resolved;
           }
