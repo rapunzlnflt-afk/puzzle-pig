@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-16T05:55Z-v87';</script>
+<script>window.__PP_BUILD__='2026-07-16T06:15Z-v88';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -2994,7 +2994,15 @@ async function selectUser(id) {
   // is restored again automatically — no orphaned localStorage flag can strand the balance.
   // Run the cloud-ledger catch-up (defined below as a reusable, retrying helper so it works
   // from every entry path: parent previewing a kid card AND a kid signing in on their device).
-  try { await ppLedgerCatchUp(id); } catch(e){ console.warn('[PuzzlePig] ledger catch-up skipped', e); }
+  //
+  // v88 FIX (blank screen): ppLedgerCatchUp POLLS the network for up to ~6s waiting for the
+  // sync bridge to be ready. Previously we AWAITED it here — BEFORE the home view is shown —
+  // so opening a brand-new child's screen (whose cloud record isn't warm yet) left the user
+  // staring at a blank screen for several seconds, or indefinitely if sync never became
+  // ready. It must NOT block rendering: the child's balance is already correct locally, and
+  // the catch-up self-refreshes the UI when it finishes (see end of ppLedgerCatchUp). Fire it
+  // in the background and render the screen immediately.
+  Promise.resolve().then(() => ppLedgerCatchUp(id)).catch(e => console.warn('[PuzzlePig] ledger catch-up skipped', e));
 
   // v=40: backfill total_saved on every sign-in so parent always sees current jar total
   try {
@@ -3017,12 +3025,19 @@ async function selectUser(id) {
     delete _preApprovalJarBalances[id];
   }
 
-  // If no jars yet, prompt jar setup (PIN-gated)
+  // v88: If this child has no jars yet, seed the default Save/Spend/Give jars and load
+  // them, so we never drop the child onto the (PIN-gated) setup screen — which renders
+  // blank when entered as a kid. Then always land on the real home screen.
   if (jars.length === 0) {
-    showView('jarsView');
-  } else {
-    showView('homeView');
+    try {
+      if (typeof autoCreateJarsForUser === 'function') {
+        await autoCreateJarsForUser(id);
+        const allJars2 = await dbGetAllJars();
+        jars = allJars2.filter(j => j.userId === id).sort((a,b) => a.order - b.order);
+      }
+    } catch(e){ console.warn('[PuzzlePig] default jar seed on selectUser failed', e); }
   }
+  showView('homeView');
 }
 
 // v55: Self-healing chore visibility. The kid's live `chores`/`choreLogs`
