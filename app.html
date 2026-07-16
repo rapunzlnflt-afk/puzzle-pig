@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-16T05:40Z-v86';</script>
+<script>window.__PP_BUILD__='2026-07-16T05:55Z-v87';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -4668,6 +4668,14 @@ async function parentOpenChildScreen(userId){
     return;
   }
   ppViewingAsChild = true;
+  // v86 FIX: a brand-new child has NO jars yet. selectUser() would then route to the
+  // PIN-gated jar-setup screen, which renders blank when entered as a kid — the
+  // "blank screen" bug. Seed the default Save/Spend/Share jars first so the child
+  // lands on their real, populated home screen (this is idempotent — it no-ops if the
+  // child already has jars).
+  try {
+    if (typeof autoCreateJarsForUser === 'function') { await autoCreateJarsForUser(userId); }
+  } catch(e){ console.warn('[PuzzlePig] auto-create jars for view-as-child failed', e); }
   // selectUser() loads that child's goals/jars/chores/logs into the live arrays and
   // shows the full kid experience (homeView), same path a real kid device uses.
   await selectUser(userId);
