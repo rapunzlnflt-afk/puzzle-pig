@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-16T06:15Z-v88';</script>
+<script>window.__PP_BUILD__='2026-07-16T06:35Z-v89';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -4694,6 +4694,11 @@ async function parentOpenChildScreen(userId){
   // selectUser() loads that child's goals/jars/chores/logs into the live arrays and
   // shows the full kid experience (homeView), same path a real kid device uses.
   await selectUser(userId);
+  // v89: defensively clear any full-screen overlays that could sit ON TOP of the child's
+  // home screen and make it look blank (the family-setup overlay at z-99999, or the
+  // getting-started guide at z-2000). A parent viewing a child must always see the kid UI.
+  try { if (window.ppSync && typeof window.ppSync.hideSetupOverlay === 'function') window.ppSync.hideSetupOverlay(); } catch(_){}
+  try { var _g = document.getElementById('guideOverlay'); if (_g) _g.classList.remove('active'); } catch(_){}
   ppShowExitChip(u.name);
 }
 try { window.parentOpenChildScreen = parentOpenChildScreen; } catch(_){}
@@ -9821,8 +9826,24 @@ init();
   async function bootSync(){
     wireSetupUI();
     const ok = await ensureAnonAuth();
+    // v89 FIX (blank screen): a RETURNING user already has familyId+role saved in
+    // localStorage. Previously, if the anonymous Supabase sign-in failed for ANY reason
+    // (flaky wifi, cold auth endpoint, a momentary network blip at the exact instant the
+    // parent tapped "Open [child]'s screen"), bootSync bailed out early and threw up the
+    // full-screen family-setup overlay (z-index 99999) ON TOP of the app. That overlay
+    // covered the child's home screen while the floating "Parent · exit" chip still
+    // peeked out below it — exactly the reported "blank screen with an exit button" bug.
+    // The app is offline-capable and all of this child's data is already in local
+    // IndexedDB, so a returning user must NEVER be blocked by a failed cloud sign-in.
+    // If we have a family locally, go straight into the app; cloud sync retries later.
     if (!ok){
-      // Allow user to retry via the overlay buttons
+      if (familyId && role){
+        console.warn('[PuzzlePig sync] anon auth failed but family is configured locally — entering app offline; sync will retry.');
+        hideSetupOverlay();
+        await onFamilyReady();
+        return;
+      }
+      // Truly first-time / unconfigured device: let the user set up / retry.
       showSetupOverlay();
       return;
     }
@@ -9847,6 +9868,9 @@ init();
   // Expose a tiny debug + parent-side API
   window.ppSync = {
     forcePull: pullAndMerge,
+    // v89: let the main app defensively dismiss the family-setup overlay (e.g. when a
+    // parent enters a child's screen) so a transient sync state can never obscure the UI.
+    hideSetupOverlay: () => { try { hideSetupOverlay(); } catch(_){} },
     // Awaitable single-log push so a parent's approve/reject can guarantee cloud is
     // updated BEFORE the next pre-render pull runs (prevents the "approve twice" race).
     pushLog: async (cl) => { try { await pushChoreLog(cl); } catch(_){} },
