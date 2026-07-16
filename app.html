@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-16T06:35Z-v89';</script>
+<script>window.__PP_BUILD__='2026-07-16T06:50Z-v90';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -4700,8 +4700,65 @@ async function parentOpenChildScreen(userId){
   try { if (window.ppSync && typeof window.ppSync.hideSetupOverlay === 'function') window.ppSync.hideSetupOverlay(); } catch(_){}
   try { var _g = document.getElementById('guideOverlay'); if (_g) _g.classList.remove('active'); } catch(_){}
   ppShowExitChip(u.name);
+  // v90 TEMP DIAGNOSTIC: after opening the child screen, report what is actually on top
+  // and the visible state of the main containers, in a banner the user can read + screenshot.
+  try { setTimeout(ppDiagChildScreen, 350); } catch(_){}
 }
 try { window.parentOpenChildScreen = parentOpenChildScreen; } catch(_){}
+
+// v90 TEMP: on-screen diagnostic so we can SEE what covers the child screen on the real
+// device. Renders a scrollable banner at the top with the top-most element at screen
+// center, the display state of key containers, and any high z-index visible overlays.
+function ppDiagChildScreen(){
+  try {
+    var lines = [];
+    lines.push('BUILD ' + (window.__PP_BUILD__ || '?'));
+    var cx = Math.floor(window.innerWidth/2), cy = Math.floor(window.innerHeight/2);
+    var top = document.elementFromPoint(cx, cy);
+    var chain = [], n = top, guard = 0;
+    while (n && guard < 6){ chain.push(n.id || (n.tagName + '.' + (String(n.className||'').split(' ')[0]))); n = n.parentElement; guard++; }
+    lines.push('TOP@center: ' + (chain.join(' < ') || 'none'));
+    ['homeView','app','familySetupScreen','guideOverlay','userSelectScreen'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (!el){ lines.push(id + ': MISSING'); return; }
+      var cs = getComputedStyle(el);
+      lines.push(id + ': disp=' + cs.display + ' vis=' + cs.visibility + ' z=' + cs.zIndex + (el.classList && el.classList.contains('active') ? ' [active]' : ''));
+    });
+    // any fixed, visible, high-z overlays
+    var ov = [];
+    document.querySelectorAll('div,section').forEach(function(d){
+      var cs = getComputedStyle(d);
+      if (cs.position === 'fixed' && cs.display !== 'none' && cs.visibility !== 'hidden' && parseInt(cs.zIndex||0,10) >= 500){
+        var r = d.getBoundingClientRect();
+        if (r.width > window.innerWidth*0.6 && r.height > window.innerHeight*0.4){
+          ov.push((d.id || d.className || d.tagName) + '(z' + cs.zIndex + ')');
+        }
+      }
+    });
+    lines.push('BIG OVERLAYS: ' + (ov.slice(0,8).join(', ') || 'none'));
+    var hv = document.getElementById('homeView');
+    lines.push('homeView chars: ' + (hv ? hv.innerHTML.length : 'n/a') + ' | text: ' + (hv ? JSON.stringify(hv.innerText.slice(0,40)) : 'n/a'));
+    lines.push('jars loaded: ' + ((window.jars||[]).length));
+    var box = document.getElementById('ppDiagBox');
+    if (!box){
+      box = document.createElement('div');
+      box.id = 'ppDiagBox';
+      box.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:2147483647;background:#111;color:#0f0;'
+        + 'font:11px/1.35 monospace;padding:10px 12px;border-radius:8px;max-height:55vh;overflow:auto;'
+        + 'box-shadow:0 6px 24px rgba(0,0,0,0.5);white-space:pre-wrap;word-break:break-word;';
+      var close = document.createElement('button');
+      close.textContent = 'close';
+      close.style.cssText = 'float:right;background:#0f0;color:#111;border:none;border-radius:5px;padding:2px 8px;font:11px monospace;font-weight:700;cursor:pointer;';
+      close.onclick = function(){ box.remove(); };
+      box.appendChild(close);
+      document.body.appendChild(box);
+    }
+    var pre = document.getElementById('ppDiagPre');
+    if (!pre){ pre = document.createElement('div'); pre.id = 'ppDiagPre'; box.appendChild(pre); }
+    pre.textContent = lines.join('\n');
+  } catch(e){ /* diagnostic must never break the app */ }
+}
+try { window.ppDiagChildScreen = ppDiagChildScreen; } catch(_){}
 
 // A small, discreet floating control (bottom-left) shown only while a parent is
 // viewing a child's screen. Deliberately understated so it doesn't intrude on the
