@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-16T07:25Z-v92';</script>
+<script>window.__PP_BUILD__='2026-07-16T08:40Z-v93';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -1766,7 +1766,11 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
      the parent actually sees the child's home screen. These override the parent-mode hides
      via equal specificity + later source order + !important. */
   body.pp-parent-mode.pp-viewing-as-child .view.active:not(#___never) { display:block !important; }
-  body.pp-parent-mode.pp-viewing-as-child #mainHeader { display:flex !important; }
+  /* v93 FIX: the header is a centered text block (text-align:center), NOT a flex row.
+     v91 forced display:flex here, which collapsed the centering and shoved the pig +
+     "Puzzle Pig" text to the left. Restore the header's natural block layout so the pig
+     and words sit centered as designed. */
+  body.pp-parent-mode.pp-viewing-as-child #mainHeader { display:block !important; text-align:center !important; }
   body.pp-parent-mode.pp-viewing-as-child #app { padding-bottom: var(--space-4) !important; }
   /* Remove bottom-nav padding from the app on kid devices so content isn't shifted up */
   body.pp-kid-mode #app { padding-bottom: 0 !important; }
@@ -4908,6 +4912,28 @@ function ppToggleFamilyCode(){
 }
 try { window.ppToggleFamilyCode = ppToggleFamilyCode; } catch(_){}
 
+// v93: expand/collapse the "Setting up [child]'s own phone?" helper card in the kid modal.
+function ppToggleOwnPhoneHelp(){
+  var panel = document.getElementById('ppOwnPhoneHelp');
+  var chev = document.getElementById('ppOwnPhoneChevron');
+  if (!panel) return;
+  var open = (panel.style.display === 'none' || !panel.style.display);
+  panel.style.display = open ? 'block' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)';
+}
+try { window.ppToggleOwnPhoneHelp = ppToggleOwnPhoneHelp; } catch(_){}
+
+// v93: same toggle for the per-child inline card (mobile). Uses the child id suffix.
+function ppToggleOwnPhoneHelpInline(uid){
+  var panel = document.getElementById('ppOwnPhoneHelp_' + uid);
+  var chev = document.getElementById('ppOwnPhoneChevron_' + uid);
+  if (!panel) return;
+  var open = (panel.style.display === 'none' || !panel.style.display);
+  panel.style.display = open ? 'block' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(90deg)' : 'rotate(0deg)';
+}
+try { window.ppToggleOwnPhoneHelpInline = ppToggleOwnPhoneHelpInline; } catch(_){}
+
 // --- Parent-settings render guards --------------------------------------
 // Root cause of the "pending chores flash / can't tap Approve" bug:
 // renderParentSettings() used to forcePull() on EVERY call, and pullAndMerge()
@@ -5008,6 +5034,13 @@ async function renderParentSettings(opts) {
     // ----- Per-child compact cards -----
   // v59 FIX C: hide blank/ghost users (local-only, no name) from parent UI
   const _visibleUsers = (users||[]).filter(u => u && u.name && String(u.name).trim());
+
+  // v93: family code for the inline "set up own phone" helper on each kid card.
+  let _famCode = '';
+  try { _famCode = (localStorage.getItem('pp_family_code') || '').toUpperCase(); } catch(_){}
+  if (!_famCode && window.ppSync && typeof window.ppSync.state === 'function'){
+    try { _famCode = (window.ppSync.state().familyCode || '').toUpperCase(); } catch(_){}
+  }
 
   // v83: Make the parent's "earned" number always match the kid's true jar total,
   // so the parent card shows the SAME number the child sees on their own screen.
@@ -5131,6 +5164,30 @@ async function renderParentSettings(opts) {
         </div>
         <div class="pp32-kid-body">
           ${openChildBtn}
+          ${!isLinked ? `<div style="margin:0 0 12px;">
+            <button type="button" onclick="event.stopPropagation();ppToggleOwnPhoneHelpInline('${u.id}')" style="width:100%;display:flex;align-items:center;gap:8px;background:var(--purple-50,#F3F0FA);border:1px solid var(--purple-100,#E5DDF2);border-radius:10px;padding:9px 11px;cursor:pointer;text-align:left;font-family:inherit;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--purple-600,#5C4287)" stroke-width="2" style="flex:none;"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+              <span style="flex:1;font-size:0.85rem;font-weight:600;color:var(--purple-700,#4A3570);">Setting up ${esc(u.name)}'s own phone?</span>
+              <svg id="ppOwnPhoneChevron_${u.id}" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2.5" style="flex:none;transition:transform 0.2s;"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+            <div id="ppOwnPhoneHelp_${u.id}" style="display:none;margin-top:9px;padding:13px;background:var(--bg,#F5F4F1);border-radius:10px;">
+              <p style="font-size:0.83rem;color:var(--text-muted);margin:0 0 9px;">On <strong>${esc(u.name)}'s new phone</strong>, open Puzzle Pig once:</p>
+              <ol style="margin:0 0 11px;padding-left:19px;font-size:0.85rem;color:var(--text);line-height:1.55;">
+                <li>Tap <strong>“I'm a kid”</strong> → <strong>“Join my family.”</strong></li>
+                <li>Enter your family code (below).</li>
+                <li>Tap <strong>${esc(u.name)}</strong> in the list of kids.</li>
+                <li>Enter ${esc(u.name)}'s PIN if you set one — done.</li>
+              </ol>
+              ${_famCode ? `<div style="display:flex;align-items:center;gap:10px;justify-content:space-between;background:#fff;border:1px dashed var(--purple-200,#D6C9EC);border-radius:9px;padding:9px 11px;">
+                <div>
+                  <div style="font-size:0.66rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-faint);margin-bottom:2px;">Family code</div>
+                  <div style="font-family:monospace;font-size:1.2rem;font-weight:700;letter-spacing:3px;color:var(--purple-700,#4A3570);">${_famCode}</div>
+                </div>
+                <button type="button" onclick="event.stopPropagation();ppCopyFamilyCode('${_famCode}')" style="background:var(--purple-600,#5C4287);color:#fff;border:none;border-radius:8px;padding:7px 13px;font-size:0.8rem;font-weight:600;cursor:pointer;font-family:inherit;">Copy</button>
+              </div>` : `<p style="font-size:0.78rem;color:var(--text-faint);margin:0;">Your family code is at the top of this settings page.</p>`}
+              <p style="font-size:0.75rem;color:var(--text-faint);margin:11px 0 0;line-height:1.5;">${esc(u.name)}'s balance and history follow her automatically. Once her phone is linked, this device stops showing her screen; undo anytime with <strong>Unlink phone</strong>.</p>
+            </div>
+          </div>` : ''}
           <div class="pp32-kid-section-label">Pending approval</div>
           ${pendingRows || `<p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 4px;">No pending chores.</p>`}
           <div class="pp32-kid-section-label" style="margin-top:12px;">History</div>
@@ -5344,6 +5401,12 @@ function pp32KidCardClick(id){
 async function pp32OpenKidModal(id){
   const u = users.find(x => x.id === id);
   if (!u) return;
+  // v93: family code for the "set up [child]'s own phone" helper card.
+  let _famCode = '';
+  try { _famCode = (localStorage.getItem('pp_family_code') || '').toUpperCase(); } catch(_){}
+  if (!_famCode && window.ppSync && typeof window.ppSync.state === 'function'){
+    try { _famCode = (window.ppSync.state().familyCode || '').toUpperCase(); } catch(_){}
+  }
   const idx = users.findIndex(x => x.id === id);
   const color = getAvatarColor(idx);
   const allChoresGlobal = await dbGetAllChores();
@@ -5403,6 +5466,30 @@ async function pp32OpenKidModal(id){
               Open ${esc(u.name)}'s screen
             </button>
             <p style="font-size:0.75rem;color:var(--text-muted);margin:8px 0 0;text-align:center;">Hand the phone to ${esc(u.name)} — exit needs your PIN.</p>
+          </div>` : ''}
+          ${!u.device_claimed_at ? `<div class="pp32-modal-section">
+            <button type="button" onclick="ppToggleOwnPhoneHelp()" style="width:100%;display:flex;align-items:center;gap:8px;background:var(--purple-50,#F3F0FA);border:1px solid var(--purple-100,#E5DDF2);border-radius:12px;padding:11px 13px;cursor:pointer;text-align:left;font-family:inherit;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--purple-600,#5C4287)" stroke-width="2" style="flex:none;"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+              <span style="flex:1;font-size:0.9rem;font-weight:600;color:var(--purple-700,#4A3570);">Setting up ${esc(u.name)}'s own phone?</span>
+              <svg id="ppOwnPhoneChevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2.5" style="flex:none;transition:transform 0.2s;"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+            <div id="ppOwnPhoneHelp" style="display:none;margin-top:10px;padding:14px;background:var(--bg,#F5F4F1);border-radius:12px;">
+              <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 10px;">On <strong>${esc(u.name)}'s new phone</strong>, open Puzzle Pig and do this once:</p>
+              <ol style="margin:0 0 12px;padding-left:20px;font-size:0.88rem;color:var(--text);line-height:1.55;">
+                <li>Tap <strong>“I'm a kid”</strong> → <strong>“Join my family.”</strong></li>
+                <li>Enter your family code (below).</li>
+                <li>Tap <strong>${esc(u.name)}</strong> in the list of kids.</li>
+                <li>Enter ${esc(u.name)}'s PIN if you set one — done.</li>
+              </ol>
+              ${_famCode ? `<div style="display:flex;align-items:center;gap:10px;justify-content:space-between;background:#fff;border:1px dashed var(--purple-200,#D6C9EC);border-radius:10px;padding:10px 12px;">
+                <div>
+                  <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-faint);margin-bottom:2px;">Family code</div>
+                  <div style="font-family:monospace;font-size:1.25rem;font-weight:700;letter-spacing:3px;color:var(--purple-700,#4A3570);">${_famCode}</div>
+                </div>
+                <button type="button" onclick="ppCopyFamilyCode('${_famCode}')" style="background:var(--purple-600,#5C4287);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:0.82rem;font-weight:600;cursor:pointer;font-family:inherit;">Copy</button>
+              </div>` : `<p style="font-size:0.8rem;color:var(--text-faint);margin:0;">Your family code is on the parent settings page.</p>`}
+              <p style="font-size:0.76rem;color:var(--text-faint);margin:12px 0 0;line-height:1.5;">${esc(u.name)}'s balance and history follow her automatically — nothing is re-entered. Once her phone is linked, this device will stop showing her screen, and you can undo it anytime with <strong>Unlink phone</strong>.</p>
+            </div>
           </div>` : ''}
           <div class="pp32-modal-section">
             <h4>Pending approval${userPending.length > 0 ? ' ('+userPending.length+')' : ''}</h4>
