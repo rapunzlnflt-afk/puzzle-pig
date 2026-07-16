@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-16T06:50Z-v90';</script>
+<script>window.__PP_BUILD__='2026-07-16T07:05Z-v91';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -1759,6 +1759,15 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
   body.pp-parent-mode #app { padding-top: 0 !important; padding-bottom: var(--space-4) !important; }
   /* Hide all views except parentSettingsView on parent device */
   body.pp-parent-mode .view:not(#parentSettingsView) { display:none !important; }
+  /* v91 FIX (blank child screen): when a PARENT taps "Open [child]'s screen" (view-as-child
+     mode), the body is still pp-parent-mode, so the rule above forced homeView (and every
+     other kid view) to display:none !important — leaving a blank screen. While the
+     pp-viewing-as-child flag is on the body, RE-ENABLE the kid views and the kid chrome so
+     the parent actually sees the child's home screen. These override the parent-mode hides
+     via equal specificity + later source order + !important. */
+  body.pp-parent-mode.pp-viewing-as-child .view.active:not(#___never) { display:block !important; }
+  body.pp-parent-mode.pp-viewing-as-child #mainHeader { display:flex !important; }
+  body.pp-parent-mode.pp-viewing-as-child #app { padding-bottom: var(--space-4) !important; }
   /* Remove bottom-nav padding from the app on kid devices so content isn't shifted up */
   body.pp-kid-mode #app { padding-bottom: 0 !important; }
 </style>
@@ -4683,6 +4692,9 @@ async function parentOpenChildScreen(userId){
     return;
   }
   ppViewingAsChild = true;
+  // v91 FIX: mark the body so CSS re-enables the kid views/chrome that pp-parent-mode
+  // otherwise force-hides with !important (that hiding was the real blank-screen cause).
+  try { document.body.classList.add('pp-viewing-as-child'); } catch(_){}
   // v86 FIX: a brand-new child has NO jars yet. selectUser() would then route to the
   // PIN-gated jar-setup screen, which renders blank when entered as a kid — the
   // "blank screen" bug. Seed the default Save/Spend/Share jars first so the child
@@ -4805,6 +4817,7 @@ try { window.ppRequestExitToParent = ppRequestExitToParent; } catch(_){}
 // role/device state is changed.
 function ppDoExitToParent(){
   ppViewingAsChild = false;
+  try { document.body.classList.remove('pp-viewing-as-child'); } catch(_){}
   ppHideExitChip();
   currentUserId = null;
   goals = []; jars = []; jarTxs = []; chores = []; choreLogs = [];
