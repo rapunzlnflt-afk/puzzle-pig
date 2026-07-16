@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Puzzle Pig — Demo</title>
-<script>window.__PP_BUILD__='2026-07-16T08:40Z-v93';</script>
+<script>window.__PP_BUILD__='2026-07-16T08:55Z-v94';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -212,6 +212,11 @@ a { color: inherit; text-decoration: none; }
   background-clip: text;
 }
 .app-logo svg, .app-logo img { flex-shrink: 0; }
+/* v94: the header pig PNG is 96x96 native but rendered with no explicit size, so it
+   looked tiny and a touch soft. Give it a crisp, intentional 76px display size (<= its
+   native res, so no upscaling blur) and tighten the gap to the wordmark. */
+.app-logo img { width: 76px; height: 76px; image-rendering: -webkit-optimize-contrast; }
+#mainHeader .app-logo { gap: 4px; }
 .app-tagline { font-size: 0.85rem; color: var(--text-muted); margin-top: var(--space-1); }
 
 /* ============ VIEWS ============ */
