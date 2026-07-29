@@ -1,3 +1,5 @@
+/* Puzzle Pig — © 2026 Shauna Wimberley / CleartrackApps. All rights reserved. */
+
 /* Puzzle Pig service worker — v47
  *
  * WHY THIS EXISTS:
@@ -9,7 +11,7 @@
  * offline. It also calls skipWaiting()/clients.claim() so a new SW takes over
  * immediately instead of waiting for every tab to close.
  */
-const PP_SW_VERSION = 'pp-v100';
+const PP_SW_VERSION = 'pp-v102';
 const PP_CACHE = 'puzzle-pig-' + PP_SW_VERSION;
 // The app shell we want to keep available offline.
 const PP_SHELL = ['./app.html', './index.html', './'];
