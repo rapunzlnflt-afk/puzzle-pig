@@ -9,7 +9,7 @@
 <meta http-equiv="Expires" content="0">
 <meta name="copyright" content="© 2026 Shauna Wimberley / CleartrackApps. All rights reserved.">
 <title>Puzzle Pig</title>
-<script>window.__PP_BUILD__='2026-07-29T23:45Z-v103';</script>
+<script>window.__PP_BUILD__='2026-07-30T06:20Z-v104';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -1838,7 +1838,10 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
         border:2px solid rgba(255,255,255,0.6); padding:16px 24px; font-size:17px; font-weight:600;
         border-radius:14px; cursor:pointer; width:100%; margin-bottom:10px;
         font-family:inherit;
-      ">Rejoin my family (I have a code)</button>
+      ">Join my family (I have a code)</button>
+      <div style="font-size:13px; opacity:0.85; line-height:1.45; margin-bottom:10px;">
+        Use this to add another parent's phone, or to set up again after reinstalling.
+      </div>
       <button id="parentChoiceBackBtn" style="
         background:transparent; color:#fff;
         border:none; padding:10px; font-size:14px; cursor:pointer; width:100%; opacity:0.85;
@@ -2009,6 +2012,7 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
       <input type="password" class="pin-digit" maxlength="1" inputmode="numeric" pattern="[0-9]" data-idx="4" autocomplete="off">
     </div>
     <div class="pin-error" id="pinError"></div>
+    <div id="pinHint" style="display:none;font-size:0.78rem;line-height:1.4;opacity:0.75;margin:6px 0 2px;"></div>
     <div class="pin-actions">
       <button class="btn btn-secondary" onclick="closePinOverlay()">Cancel</button>
       <button class="btn btn-primary" onclick="submitPin()">Confirm</button>
@@ -2794,6 +2798,7 @@ function dbGetSetting(key) {
   });
 }
 function dbPutSetting(key, value) { return _idbPut(SETTINGS_STORE, { key, value }); }
+function dbDeleteSetting(key)     { return _idbDelete(SETTINGS_STORE, key); }
 
 // ---- Jars (IndexedDB only) ----
 function dbPutJar(j)         { return _idbPut(JARS_STORE, j); }
@@ -3121,26 +3126,188 @@ function switchUser() {
 // ---- PIN System ----
 let parentUnlocked = false; // Session-level unlock — no repeated PIN entry
 
-// v103: does the FAMILY have a parent PIN, as opposed to just this device?
-// The cloud flag is authoritative. Once we have seen "yes" we latch it into
-// IndexedDB and never un-latch, so pulling the network cable cannot re-open the
-// self-enrolment hole below. Returns null when we genuinely cannot tell — no cloud
-// answer, no latch, or families.has_parent_pin not deployed yet — and callers then
-// fall back to the old permissive behaviour so nothing breaks before the SQL runs.
+// ---- v104: the parent PIN is a FAMILY secret, hashed and verified server-side ----
+// The PIN itself is never stored or transmitted. What travels and what we cache is
+//     sha256_hex( family_id + ':' + pin )
+// which is the exact string set_parent_pin/verify_parent_pin compare against. Because
+// the hash lives on the family row, ANY parent device can approve a chore once it has
+// typed the PIN once — which is the whole point of this release.
+function ppFamilyIdForPin() {
+  let id = '';
+  try { id = localStorage.getItem('pp_family_id') || ''; } catch(_){}
+  if (!id && window.ppSync && typeof window.ppSync.state === 'function') {
+    try { id = window.ppSync.state().familyId || ''; } catch(_){}
+  }
+  return id;
+}
+
+// Returns the 64-char lowercase hex hash, or null when we cannot compute one:
+// no family yet, or no crypto.subtle (a non-secure context such as file://). Callers
+// treat null as "fall back to the old device-local PIN behaviour" — never as an error.
+async function ppPinHash(pin) {
+  const familyId = ppFamilyIdForPin();
+  if (!familyId || !pin) return null;
+  const subtle = (typeof crypto !== 'undefined' && crypto.subtle) ? crypto.subtle : null;
+  if (!subtle) return null;
+  try {
+    const bytes = new TextEncoder().encode(familyId + ':' + pin);
+    const digest = await subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch(e) {
+    console.warn('[PuzzlePig] could not hash the PIN', e);
+    return null;
+  }
+}
+
+function ppCachedPinHash() { return dbGetSetting('parentPinHash'); }
+
+// Cache the hash so this device can verify offline, and latch "the family has a PIN"
+// so pulling the network cable cannot re-open the self-enrolment hole.
+async function ppCachePinHash(hash) {
+  if (!hash) return;
+  try { await dbPutSetting('parentPinHash', hash); } catch(_){}
+  try { await dbPutSetting('familyHasPin', '1'); } catch(_){}
+}
+
+// Does the FAMILY have a parent PIN? true / false / null when we cannot tell (offline).
+// An explicit false from the server is authoritative: that is the support path (the
+// owner clears families.parent_pin_hash for a locked-out family), so we drop the local
+// cache too, otherwise this device would keep failing verification forever.
 async function familyPinConfigured() {
   let cloud = null;
   try {
-    if (window.ppSync && typeof window.ppSync.familyHasPin === 'function') {
-      cloud = await window.ppSync.familyHasPin();
+    if (window.ppSync && typeof window.ppSync.parentPinStatus === 'function') {
+      const r = await window.ppSync.parentPinStatus();
+      if (r && r.ok) cloud = (r.value === true);
     }
   } catch(_){}
   if (cloud === true) {
     try { await dbPutSetting('familyHasPin', '1'); } catch(_){}
     return true;
   }
+  if (cloud === false) {
+    try {
+      if (await dbGetSetting('parentPinPendingPush') !== '1') {
+        await dbPutSetting('familyHasPin', '0');
+        await dbDeleteSetting('parentPinHash');
+      }
+    } catch(_){}
+    return false;
+  }
   try { if (await dbGetSetting('familyHasPin') === '1') return true; } catch(_){}
-  return cloud;
+  try { if (await ppCachedPinHash()) return true; } catch(_){}
+  return null;
 }
+
+// Is the typed PIN the family's PIN? Online the server decides; offline we compare
+// against the cached hash so approving a chore on a plane still works.
+async function ppVerifyTypedPin(pin) {
+  const hash = await ppPinHash(pin);
+  if (hash) {
+    let rpc = null;
+    try {
+      if (window.ppSync && typeof window.ppSync.verifyParentPin === 'function') {
+        rpc = await window.ppSync.verifyParentPin(hash);
+      }
+    } catch(_){}
+    if (rpc && rpc.ok) {
+      if (rpc.value === true) { await ppCachePinHash(hash); return true; }
+      // The server may say no because the family has no PIN at all (support reset).
+      // Only trust it over the local cache when there is nothing waiting to be pushed.
+      if (await dbGetSetting('parentPinPendingPush') !== '1') return false;
+    }
+    const cached = await ppCachedPinHash();
+    if (cached) return hash === cached;
+  }
+  // No hash available (no crypto.subtle, or no family yet): today's local-only PIN.
+  const legacy = await dbGetSetting('parentPin');
+  if (legacy) return pin === String(legacy);
+  return false;
+}
+
+// Store or replace the family PIN. Returns { ok } or { ok:false, message } so the
+// caller can show the server's own refusal.
+async function ppSaveFamilyPin(newPin, oldPin) {
+  const hash = await ppPinHash(newPin);
+  if (!hash) {
+    // No crypto.subtle. Degrade to the pre-v104 device-local PIN rather than crashing
+    // setup; the paid app is served over HTTPS so this is a file:// edge case only.
+    await dbPutSetting('parentPin', newPin);
+    return { ok: true, localOnly: true };
+  }
+  const oldHash = oldPin ? await ppPinHash(oldPin) : null;
+  let rpc = null;
+  try {
+    if (window.ppSync && typeof window.ppSync.setParentPin === 'function') {
+      rpc = await window.ppSync.setParentPin(hash, oldHash);
+    }
+  } catch(_){}
+  if (rpc && rpc.ok && rpc.value !== false) {
+    try { await dbDeleteSetting('parentPinPendingPush'); } catch(_){}
+    await ppCachePinHash(hash);
+    try { await dbDeleteSetting('parentPin'); } catch(_){}
+    return { ok: true };
+  }
+  if (rpc && rpc.offline) {
+    // Offline first-time setup: keep the PIN usable on this device and push it up on
+    // the next boot. Never keep the plaintext.
+    if (!oldPin) {
+      await ppCachePinHash(hash);
+      try { await dbPutSetting('parentPinPendingPush', '1'); } catch(_){}
+      try { await dbDeleteSetting('parentPin'); } catch(_){}
+      return { ok: true, pending: true };
+    }
+    return { ok: false, message: "You need to be online to change your family's Parent PIN." };
+  }
+  return { ok: false, message: ppPinErrorText(rpc && rpc.message) };
+}
+
+// Turn the server's raise messages into something a parent can act on.
+function ppPinErrorText(serverMessage) {
+  const m = serverMessage || '';
+  if (/only a parent/i.test(m)) return "Only a parent can set your family's Parent PIN.";
+  if (/current pin/i.test(m))   return "That's not your current PIN.";
+  return 'Could not save the PIN. Please try again.';
+}
+
+function ppIsChildDevice() {
+  try { return localStorage.getItem('pp_role') === 'child'; } catch(_){ return false; }
+}
+
+// The privileged action a correct PIN unlocks. Shared by the already-unlocked
+// shortcut and by submitPin(), so the two can never drift apart.
+async function ppRunPinAction(action, extra) {
+  if (action === 'add') { showAddUserForm(); }
+  else if (action === 'manage') { managingUsers = true; renderUserSelect(); }
+  else if (action === 'remove') { await doRemoveUser(extra); }
+  else if (action === 'jar-setup') { showJarSetup(); }
+  else if (action === 'jar-setup-save') { await saveJarSetup(); }
+  else if (action === 'jar-transfer') { openTransferModal(); }
+  else if (action === 'manage-chores') { showManageChores(); }
+  else if (action === 'open-parent-settings') {
+    document.getElementById('userSelectScreen').style.display = 'none';
+    document.getElementById('app').style.display = '';
+    showView('parentSettingsView');
+  }
+  else if (action === 'exit-to-parent') { ppDoExitToParent(); }
+  else if (action === 'review-chores') { openReviewChoresModal(); }
+  else if (action === 'delete-chore') { await doDeleteChore(extra); }
+  else if (action === 'save-chore') { await doSaveChore(); }
+  else if (action === 'approve') { await approveChoreFromParent(extra && extra.logId, (extra && extra.jarId) || ''); }
+  else if (action === 'reject') { await rejectChoreFromParent(extra && extra.logId); }
+  else if (action === 'jar-edit-name') { jarEditName(extra); }
+  else if (action === 'jar-add-money') { jarAddMoney(extra); }
+  else if (action === 'jar-withdraw') { jarWithdraw(extra); }
+}
+
+// Steps of the PIN flow itself. They must always show the overlay, even when the
+// session is already unlocked, or the flow would silently swallow them.
+const PP_PIN_FLOW_ACTIONS = ['setup', 'setup-confirm', 'exit-to-parent', 'family-verify',
+                             'change-pin-current', 'change-pin-new', 'change-pin-confirm'];
+
+// The action to run once a second parent's phone has been enrolled with the family PIN.
+let _resumeAfterPin = null;
 
 async function requestPinFor(action, extra) {
   // Rename and Withdraw stay ungated — the child owns their jars. Renaming is
@@ -3157,51 +3324,39 @@ async function requestPinFor(action, extra) {
   // dashboard) ALWAYS requires a fresh PIN, even if parentUnlocked is still true from
   // earlier in the session. The phone has been in a child's hands, so a stale session
   // unlock must not let them tap out to the admin side. Fall through to the prompt.
-  if (parentUnlocked && action !== 'setup' && action !== 'setup-confirm' && action !== 'exit-to-parent') {
-    pinCallback = { action, extra };
-    // Simulate successful PIN entry
-    const savedExtra = extra;
+  if (parentUnlocked && PP_PIN_FLOW_ACTIONS.indexOf(action) === -1) {
     pinCallback = null;
-    if (action === 'add') { showAddUserForm(); }
-    else if (action === 'manage') { managingUsers = true; renderUserSelect(); }
-    else if (action === 'remove') { await doRemoveUser(savedExtra); }
-    else if (action === 'jar-setup') { showJarSetup(); }
-    else if (action === 'jar-setup-save') { await saveJarSetup(); }
-    else if (action === 'jar-transfer') { openTransferModal(); }
-    else if (action === 'manage-chores') { showManageChores(); }
-    else if (action === 'open-parent-settings') { document.getElementById('userSelectScreen').style.display='none'; document.getElementById('app').style.display=''; showView('parentSettingsView'); }
-    else if (action === 'review-chores') { openReviewChoresModal(); }
-    else if (action === 'delete-chore') { await doDeleteChore(savedExtra); }
-    else if (action === 'save-chore') { await doSaveChore(); }
-    else if (action === 'approve') { await approveChoreFromParent(savedExtra && savedExtra.logId, (savedExtra && savedExtra.jarId) || ''); }
-    else if (action === 'reject') { await rejectChoreFromParent(savedExtra && savedExtra.logId); }
-    else if (action === 'jar-edit-name') { jarEditName(savedExtra); }
-    else if (action === 'jar-add-money') { jarAddMoney(savedExtra); }
-    else if (action === 'jar-withdraw') { jarWithdraw(savedExtra); }
+    await ppRunPinAction(action, extra);
     return;
   }
 
-  // If no PIN set yet, start setup flow first.
-  // v103: but only when the FAMILY has no PIN either. Otherwise this prompt was the
-  // gate turning itself into an enrolment form: a child who reached parent mode on a
-  // device that had never seen a PIN was invited to choose one, and their pending
-  // chore was then approved. The PIN value is still device-local, so a genuine
-  // parent's second device has to approve on the device that holds the PIN until PIN
-  // sync ships. A device that already holds the PIN is unaffected, so Change PIN
-  // still works.
-  const storedPin = await dbGetSetting('parentPin');
-  if (!storedPin && action !== 'setup-confirm') {
-    if (await familyPinConfigured() === true) {
-      alert("This device doesn't have your family's parent PIN.\n\nYour family already set one, so a new device can't choose a different PIN. Use the device where the PIN was set up.");
+  // Does this device hold the family PIN yet? Either as the cached hash (v104) or as a
+  // pre-v104 device-local PIN that has not been migrated yet.
+  const holdsPin = (await ppCachedPinHash()) || (await dbGetSetting('parentPin'));
+  const midFlow = (action === 'setup-confirm' || action === 'family-verify' ||
+                   action === 'change-pin-new' || action === 'change-pin-confirm');
+  if (!holdsPin && !midFlow) {
+    const famHasPin = await familyPinConfigured();
+    if (famHasPin === true) {
+      // v104: the second parent's phone. v103 offered it a "choose a 5-digit PIN"
+      // prompt, which is how a family silently ended up with two different PINs (and
+      // was how a child who reached parent mode used to enrol themselves). Now the
+      // device is asked to ENTER the family's PIN, which the server verifies. Once it
+      // has, the hash is cached and this phone can approve chores online or off.
+      _resumeAfterPin = (action === 'setup') ? null : { action, extra };
+      requestPinFor('family-verify');
+      return;
+    }
+    if (ppIsChildDevice()) {
+      alert("Only a parent can set your family's Parent PIN.\n\nAsk a parent to set it up on their phone.");
       return;
     }
     if (action !== 'setup') {
-      pinCallback = { action, extra };
+      _resumeAfterPin = { action, extra };
       requestPinFor('setup');
       return;
     }
   }
-  // After setup completes, restore original action
 
   pinCallback = { action, extra };
   const overlay = document.getElementById('pinOverlay');
@@ -3209,12 +3364,35 @@ async function requestPinFor(action, extra) {
   const subtitle = document.getElementById('pinSubtitle');
   document.getElementById('pinError').textContent = '';
 
+  const hint = document.getElementById('pinHint');
+  if (hint) { hint.textContent = ''; hint.style.display = 'none'; }
+
   if (action === 'setup') {
     title.textContent = 'Set Parent PIN';
     subtitle.textContent = 'Choose a 5-digit PIN to manage users';
   } else if (action === 'setup-confirm') {
     title.textContent = 'Confirm PIN';
     subtitle.textContent = 'Enter the same PIN again to confirm';
+  } else if (action === 'family-verify') {
+    title.textContent = "Enter your family's Parent PIN";
+    subtitle.textContent = 'Your family already has one. Enter it to use this phone as a parent.';
+    if (hint) {
+      hint.textContent = "Don't know it? Ask the parent who set it up, or email cleartrackapps@gmail.com.";
+      hint.style.display = '';
+    }
+  } else if (action === 'change-pin-current') {
+    title.textContent = 'Current Parent PIN';
+    subtitle.textContent = 'Enter your current PIN before choosing a new one';
+    if (hint) {
+      hint.textContent = "Don't know it? Ask the parent who set it up, or email cleartrackapps@gmail.com.";
+      hint.style.display = '';
+    }
+  } else if (action === 'change-pin-new') {
+    title.textContent = 'New Parent PIN';
+    subtitle.textContent = 'Choose a new 5-digit PIN for your family';
+  } else if (action === 'change-pin-confirm') {
+    title.textContent = 'Confirm New PIN';
+    subtitle.textContent = 'Enter the new PIN again to confirm';
   } else if (action === 'exit-to-parent') {
     title.textContent = 'Parent PIN';
     subtitle.textContent = 'Enter the parent PIN to leave the kid screen';
@@ -3264,16 +3442,13 @@ async function submitPin() {
       _submittingPin = false;
       return;
     }
-    await dbPutSetting('parentPin', pin);
-    // v103: record family-wide that a parent PIN now exists so no other device is
-    // offered the "choose a PIN" prompt. Best-effort — if the cloud flag can't be
-    // written, the local latch still protects this device.
-    try { await dbPutSetting('familyHasPin', '1'); } catch(_){}
-    try {
-      if (window.ppSync && typeof window.ppSync.markFamilyHasPin === 'function') {
-        await window.ppSync.markFamilyHasPin();
-      }
-    } catch(_){}
+    // v104: the hash goes to the family row so every parent device shares one PIN.
+    const saved = await ppSaveFamilyPin(pin, null);
+    if (!saved.ok) {
+      document.getElementById('pinError').textContent = saved.message;
+      _submittingPin = false;
+      return;
+    }
     closePinOverlay();
     parentUnlocked = true;
     _submittingPin = false;
@@ -3285,9 +3460,78 @@ async function submitPin() {
     return;
   }
 
-  // Verify against stored PIN
-  const storedPin = await dbGetSetting('parentPin');
-  if (pin !== storedPin) {
+  // v104: this device is being enrolled with the family's existing PIN.
+  if (action === 'family-verify') {
+    const ok = await ppVerifyTypedPin(pin);
+    if (!ok) {
+      document.getElementById('pinError').textContent = 'Incorrect PIN';
+      document.querySelectorAll('.pin-digit').forEach(d => d.value = '');
+      document.querySelector('.pin-digit[data-idx="0"]').focus();
+      _submittingPin = false;
+      return;
+    }
+    const resume = _resumeAfterPin;
+    _resumeAfterPin = null;
+    closePinOverlay();
+    parentUnlocked = true;
+    _submittingPin = false;
+    if (resume) { await ppRunPinAction(resume.action, resume.extra); }
+    else {
+      document.getElementById('app').style.display = '';
+      document.getElementById('userSelectScreen').style.display = 'none';
+      showView('parentSettingsView');
+      renderParentSettings({ force: true });
+    }
+    return;
+  }
+
+  // v104: changing the PIN now asks for the current one, because set_parent_pin
+  // requires the old hash. There is deliberately no self-serve reset.
+  if (action === 'change-pin-current') {
+    const ok = await ppVerifyTypedPin(pin);
+    if (!ok) {
+      document.getElementById('pinError').textContent = "That's not your current PIN.";
+      document.querySelectorAll('.pin-digit').forEach(d => d.value = '');
+      document.querySelector('.pin-digit[data-idx="0"]').focus();
+      _submittingPin = false;
+      return;
+    }
+    closePinOverlay();
+    _submittingPin = false;
+    setTimeout(() => requestPinFor('change-pin-new', { oldPin: pin }), 200);
+    return;
+  }
+
+  if (action === 'change-pin-new') {
+    const oldPin = (pinCallback.extra || {}).oldPin;
+    closePinOverlay();
+    _submittingPin = false;
+    setTimeout(() => requestPinFor('change-pin-confirm', { oldPin, newPin: pin }), 200);
+    return;
+  }
+
+  if (action === 'change-pin-confirm') {
+    const { oldPin, newPin } = pinCallback.extra || {};
+    if (pin !== newPin) {
+      document.getElementById('pinError').textContent = 'PINs do not match. Try again.';
+      _submittingPin = false;
+      return;
+    }
+    const saved = await ppSaveFamilyPin(newPin, oldPin);
+    if (!saved.ok) {
+      document.getElementById('pinError').textContent = saved.message;
+      _submittingPin = false;
+      return;
+    }
+    closePinOverlay();
+    parentUnlocked = true;
+    _submittingPin = false;
+    alert('Your family Parent PIN has been changed. Every parent phone now uses the new PIN.');
+    return;
+  }
+
+  // Verify — server-side when online, against the cached hash when offline.
+  if (!(await ppVerifyTypedPin(pin))) {
     document.getElementById('pinError').textContent = 'Incorrect PIN';
     document.querySelectorAll('.pin-digit').forEach(d => d.value = '');
     document.querySelector('.pin-digit[data-idx="0"]').focus();
@@ -3298,46 +3542,8 @@ async function submitPin() {
   const savedExtra = pinCallback ? pinCallback.extra : null;
   closePinOverlay();
   parentUnlocked = true; // Unlock for this session
-
   _submittingPin = false;
-  if (action === 'add') {
-    showAddUserForm();
-  } else if (action === 'manage') {
-    managingUsers = true;
-    renderUserSelect();
-  } else if (action === 'remove') {
-    await doRemoveUser(savedExtra);
-  } else if (action === 'jar-setup') {
-    showJarSetup();
-  } else if (action === 'jar-setup-save') {
-    await saveJarSetup();
-  } else if (action === 'jar-transfer') {
-    openTransferModal();
-  } else if (action === 'manage-chores') {
-    showManageChores();
-  } else if (action === 'open-parent-settings') {
-    document.getElementById('userSelectScreen').style.display = 'none';
-    document.getElementById('app').style.display = '';
-    showView('parentSettingsView');
-  } else if (action === 'exit-to-parent') {
-    ppDoExitToParent();
-  } else if (action === 'review-chores') {
-    openReviewChoresModal();
-  } else if (action === 'delete-chore') {
-    await doDeleteChore(savedExtra);
-  } else if (action === 'save-chore') {
-    await doSaveChore();
-  } else if (action === 'approve') {
-    await approveChoreFromParent(savedExtra && savedExtra.logId, (savedExtra && savedExtra.jarId) || '');
-  } else if (action === 'reject') {
-    await rejectChoreFromParent(savedExtra && savedExtra.logId);
-  } else if (action === 'jar-edit-name') {
-    jarEditName(savedExtra);
-  } else if (action === 'jar-add-money') {
-    jarAddMoney(savedExtra);
-  } else if (action === 'jar-withdraw') {
-    jarWithdraw(savedExtra);
-  }
+  await ppRunPinAction(action, savedExtra);
 }
 
 // PIN digit auto-advance
@@ -3428,7 +3634,9 @@ async function init() {
   // Migrate: if goals exist but no users, create a default user
   const allGoals = await dbGetAll();
   users = await dbGetAllUsers();
-  const hasPin = await dbGetSetting('parentPin');
+  // v104: a set-up device holds the family PIN as a hash; only pre-v104 devices still
+  // hold the plaintext.
+  const hasPin = (await ppCachedPinHash()) || (await dbGetSetting('parentPin'));
 
   if (allGoals.length > 0 && users.length === 0) {
     // Legacy data — create a default user and assign goals
@@ -4953,6 +5161,26 @@ async function ppShareInvite(code){
   ppFamilyToast(ok ? 'Invite link copied - paste it to your kid' : 'Invite link ready');
 }
 
+// v104: adding a second parent. Deliberately plain text with NO link that carries a
+// role — a link that confers parent is exactly what v103 removed. The other adult
+// installs the app themselves and types the family code in by hand.
+async function ppShareParentInvite(code){
+  code = (code || '').toUpperCase();
+  var appUrl = location.origin + location.pathname;
+  var msg = 'Open ' + appUrl + ", tap I'm a Parent, then Join my family (I have a code), and enter " + code + '.';
+  if (navigator.share){
+    try {
+      await navigator.share({ title: 'Puzzle Pig parent invite', text: msg });
+      return;
+    } catch(e){
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+  var ok = await ppCopyText(msg);
+  ppFamilyToast(ok ? 'Parent instructions copied - paste them to the other parent' : msg);
+}
+try { window.ppShareParentInvite = ppShareParentInvite; } catch(_){}
+
 // Expand/collapse the family-code panel (collapsed row at the bottom of Parent Settings).
 function ppToggleFamilyCode(){
   var row = document.getElementById('ppFamilyCodeRow');
@@ -5386,9 +5614,14 @@ async function renderParentSettings(opts) {
           </button>
           <button type="button" class="pp-fc-btn pp-fc-btn-primary" id="ppShareInviteBtn" onclick="ppShareInvite('${_code}')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            <span>Share invite</span>
+            <span>Share kid invite link</span>
+          </button>
+          <button type="button" class="pp-fc-btn" id="ppInviteParentBtn" onclick="ppShareParentInvite('${_code}')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg>
+            <span>Invite another parent</span>
           </button>
         </div>
+        <div class="pp-family-code-hint">The kid link turns a phone into a kid device. Use "Invite another parent" for a grown-up's phone.</div>
       </div>`;
       })()}
 
@@ -5961,9 +6194,9 @@ async function removeUserFromParent(userId) {
 }
 
 function changePin() {
-  // Clear current PIN and trigger re-setup
-  parentUnlocked = false;
-  requestPinFor('setup');
+  // v104: ask for the current PIN first. The PIN is a family secret now, so the server
+  // will not replace the stored hash without the old one.
+  requestPinFor('change-pin-current');
 }
 
 // ---- Encouragement Messages ----
@@ -6858,9 +7091,6 @@ async function preloadTestData() {
     await dbPut(emmaGoal);
     await dbPut(liamGoal);
   }
-  // Set a default PIN if not set
-  const pin = await dbGetSetting('parentPin');
-  if (!pin) await dbPutSetting('parentPin', '12345');
   // Refresh state
   users = await dbGetAllUsers();
   return { users: users.length, chores: (await dbGetAllChores()).length };
@@ -9459,7 +9689,7 @@ init();
 
     // "I'm a Parent" now asks: new family or rejoin existing?
     if (startBtn) startBtn.onclick = () => {
-      document.getElementById('familySetupHeadline').textContent = "Setting up, or rejoining your family?";
+      document.getElementById('familySetupHeadline').textContent = "Setting up, or joining your family?";
       showView('parentChoice');
       setStatus('');
     };
@@ -9472,7 +9702,7 @@ init();
 
     if (rejoinBtn) rejoinBtn.onclick = () => {
       _setupJoinAsParent = true;
-      document.getElementById('familySetupHeadline').textContent = "Enter your family code to rejoin.";
+      document.getElementById('familySetupHeadline').textContent = "Enter your family code to join.";
       showView('child');
       setStatus('');
       setTimeout(()=>{ const i=document.getElementById('familyCodeInput'); if (i) i.focus(); }, 60);
@@ -9495,7 +9725,7 @@ init();
     if (backBtn) backBtn.onclick = () => {
       // Go back to whichever menu makes sense.
       if (_setupJoinAsParent){
-        document.getElementById('familySetupHeadline').textContent = "Setting up, or rejoining your family?";
+        document.getElementById('familySetupHeadline').textContent = "Setting up, or joining your family?";
         showView('parentChoice');
       } else {
         document.getElementById('familySetupHeadline').textContent = "Set up your family to sync chores between devices.";
@@ -9512,12 +9742,14 @@ init();
       const code = (codeIn.value || '').trim().toUpperCase();
       if (code.length !== 6){ setStatus('Please enter a 6-character code.', true); return; }
       const asParent = _setupJoinAsParent;
-      setStatus(asParent ? 'Rejoining your family…' : 'Joining family…');
+      setStatus(asParent ? 'Joining your family…' : 'Joining family…');
       const ok = await ensureAnonAuth(); if (!ok) return;
-      const { data, error } = await sb.rpc('join_family_for_current_user', {
-        p_family_code: code,
-        p_display_name: asParent ? 'Parent' : 'Kid'
-      });
+      // v104: a parent joins through join_family_as_parent, which writes role='parent'
+      // server-side. The client used to call the child join and then patch its own
+      // profiles.role, which is exactly the write Migration B revokes.
+      const { data, error } = asParent
+        ? await sb.rpc('join_family_as_parent', { p_family_code: code, p_display_name: 'Parent' })
+        : await sb.rpc('join_family_for_current_user', { p_family_code: code, p_display_name: 'Kid' });
       if (error){
         console.error('[PuzzlePig sync] join error', error);
         setStatus('Could not join: ' + (error.message || ''), true);
@@ -9853,46 +10085,123 @@ init();
   // zero rows, realtime events are filtered out, and pending chores never
   // appear on the parent phone. This upsert makes every fresh session eligible
   // to read/receive the family's data.
+  // v104: the client NEVER writes profiles.role any more. role is what decides who can
+  // approve a chore and who can set the family PIN, so it is written server-side only —
+  // by join_family_as_parent / join_family_for_current_user / create_family_for_current_user.
+  // Migration B revokes the client's permission to write it, at which point any leftover
+  // direct write would fail silently.
   async function ensureProfileLink(){
     if (!authUserId || !familyId || !role) return;
     try {
+      const { data } = await sb.from('profiles').select('user_id, family_id, role').eq('user_id', authUserId).limit(1);
+      const row = data && data[0];
+      const linked = row && row.family_id === familyId;
+      if (linked && (role === 'child' || row.role === 'parent')){
+        console.log('[PuzzlePig sync] profile already linked: user_id=' + authUserId.slice(0,8) + '… role=' + row.role);
+        return;
+      }
+      if (role === 'parent'){
+        // Anonymous sessions rotate (expired refresh token, iOS storage clear, new
+        // browser). Re-running the parent join is what re-creates the profiles row with
+        // role='parent' without the client asserting the role itself.
+        if (!familyCode){
+          console.warn('[PuzzlePig sync] parent profile not linked and no family code held — cannot repair');
+          return;
+        }
+        const { error } = await sb.rpc('join_family_as_parent', { p_family_code: familyCode, p_display_name: 'Parent' });
+        if (error) console.warn('[PuzzlePig sync] join_family_as_parent (relink) failed', error.message || error);
+        else console.log('[PuzzlePig sync] parent profile linked server-side');
+        return;
+      }
       const { error } = await sb.from('profiles').upsert({
         user_id: authUserId,
         family_id: familyId,
-        role: role === 'child' ? 'child' : 'parent',
-        display_name: role === 'child' ? 'Kid' : 'Parent'
+        display_name: 'Kid'
       }, { onConflict: 'user_id' });
       if (error) console.warn('[PuzzlePig sync] ensureProfileLink error', error);
-      else console.log('[PuzzlePig sync] profile linked: user_id=' + authUserId.slice(0,8) + '… family_id=' + familyId.slice(0,8) + '… role=' + role);
+      else console.log('[PuzzlePig sync] profile linked: user_id=' + authUserId.slice(0,8) + '… family_id=' + familyId.slice(0,8) + '… role=child');
     } catch(e){ console.warn('[PuzzlePig sync] ensureProfileLink threw', e); }
   }
 
-  // ---------- v103: family-level "a parent PIN exists" flag ----------
-  // The PIN VALUE is still device-local (IndexedDB) and is deliberately NOT synced
-  // here. This boolean is the minimum needed to stop a brand-new device from being
-  // offered a fresh PIN to choose — which is how a child who reached parent mode used
-  // to pick their own PIN and approve their own chores.
-  // Both helpers return null/false rather than throwing when families.has_parent_pin
-  // has not been added yet, so the app keeps working before the SQL is applied.
-  async function fetchFamilyHasPin(){
-    if (!familyId) return null;
-    try {
-      const { data, error } = await sb.from('families').select('has_parent_pin').eq('id', familyId).limit(1);
-      if (error){ console.warn('[PuzzlePig sync] has_parent_pin unreadable', error.message || error); return null; }
-      const row = data && data[0];
-      if (!row || row.has_parent_pin == null) return null;
-      return !!row.has_parent_pin;
-    } catch(e){ console.warn('[PuzzlePig sync] has_parent_pin fetch threw', e); return null; }
+  // ---------- v104: family parent-PIN hash, verified server-side ----------
+  // families.parent_pin_hash holds sha256_hex(family_id + ':' + pin). The plaintext PIN
+  // never leaves the device it was typed on, and the hash is never read back — the three
+  // RPCs below are the only way to set, verify, or ask about it.
+  //
+  // Every wrapper answers { ok:true, value } when the server spoke, or
+  // { ok:false, offline, message } when it did not. Callers MUST be able to tell those
+  // apart: this is an offline-first PWA, and "no answer" has to fall back to the cached
+  // hash instead of locking a parent out on a plane.
+  function rpcOutcome(error, data){
+    if (!error) return { ok: true, value: data };
+    const message = error.message || String(error);
+    const offline = !navigator.onLine ||
+      /fetch|network|timeout|load failed|connection|aborted/i.test(message);
+    return { ok: false, offline, message };
   }
-  // Only ever sets the flag TRUE, and only via an RPC, so no device needs UPDATE
-  // rights on the families row (which also holds the family code).
-  async function markFamilyHasPin(){
-    if (!familyId) return false;
+
+  async function callPinRpc(fn, args){
     try {
-      const { error } = await sb.rpc('set_family_has_parent_pin', { p_family_id: familyId });
-      if (error){ console.warn('[PuzzlePig sync] could not set has_parent_pin', error.message || error); return false; }
-      return true;
-    } catch(e){ console.warn('[PuzzlePig sync] set has_parent_pin threw', e); return false; }
+      const { data, error } = await sb.rpc(fn, args);
+      if (error) console.warn('[PuzzlePig sync] ' + fn + ' refused', error.message || error);
+      return rpcOutcome(error, data);
+    } catch(e){
+      console.warn('[PuzzlePig sync] ' + fn + ' threw', e);
+      return { ok: false, offline: true, message: String((e && e.message) || e) };
+    }
+  }
+
+  const parentPinStatus = () => callPinRpc('parent_pin_status', {});
+  const verifyParentPin = (hash) => callPinRpc('verify_parent_pin', { p_hash: hash });
+  const setParentPin = (hash, oldHash) =>
+    callPinRpc('set_parent_pin', { p_hash: hash, p_old_hash: oldHash || null });
+
+  // First run of v104 on a device that still holds a pre-v104 plaintext PIN. Hash it,
+  // put the hash where the whole family can use it, then delete the plaintext.
+  async function migrateLocalPinToFamily(){
+    if (role !== 'parent') return;
+    if (typeof dbGetSetting !== 'function') return;
+    let legacy = null;
+    try { legacy = await dbGetSetting('parentPin'); } catch(_){ return; }
+    if (!legacy){
+      // Nothing to migrate, but a PIN set while offline may still owe the server a push.
+      try {
+        if (await dbGetSetting('parentPinPendingPush') === '1'){
+          const cached = await dbGetSetting('parentPinHash');
+          if (cached){
+            const r = await setParentPin(cached, null);
+            if (r.ok && r.value !== false) await dbDeleteSetting('parentPinPendingPush');
+          }
+        }
+      } catch(e){ console.warn('[PuzzlePig sync] pending PIN push skipped', e); }
+      return;
+    }
+    const hash = await ppPinHash(String(legacy));
+    if (!hash) return;   // no crypto.subtle: keep the old device-local PIN as it is
+    const status = await parentPinStatus();
+    if (!status.ok) return;   // offline — try again next boot
+    if (status.value === true){
+      // The family already has a hash (another parent set it, or an earlier v104 run on
+      // this device). If this device's old PIN IS the family PIN, just keep the hash.
+      const v = await verifyParentPin(hash);
+      if (!v.ok) return;
+      if (v.value === true){
+        await ppCachePinHash(hash);
+        console.log('[PuzzlePig sync] local PIN matched the family PIN — cached the hash');
+      } else {
+        console.log('[PuzzlePig sync] local PIN differs from the family PIN — this device will be asked for the family PIN');
+      }
+      await dbDeleteSetting('parentPin');
+      return;
+    }
+    const r = await setParentPin(hash, null);
+    if (r.ok && r.value !== false){
+      await ppCachePinHash(hash);
+      await dbDeleteSetting('parentPin');
+      console.log('[PuzzlePig sync] migrated this device\'s PIN to the family row');
+    } else {
+      console.warn('[PuzzlePig sync] could not migrate the local PIN yet', r.message || '');
+    }
   }
 
   async function onFamilyReady(){
@@ -9911,14 +10220,9 @@ init();
     // Link the current anon auth user to this family so RLS lets us read.
     // MUST run before the first pull or realtime subscribe.
     await ensureProfileLink();
-    // v103: back-fill the family flag for families that set a PIN before the flag
-    // existed. Only a device that actually holds the PIN can assert it, so a child's
-    // phone can never turn this on.
-    try {
-      if (role === 'parent' && typeof dbGetSetting === 'function' && await dbGetSetting('parentPin')){
-        if (await fetchFamilyHasPin() !== true) await markFamilyHasPin();
-      }
-    } catch(e){ console.warn('[PuzzlePig sync] has_parent_pin back-fill skipped', e); }
+    // v104: move any pre-v104 device-local PIN up to the family row.
+    try { await migrateLocalPinToFamily(); }
+    catch(e){ console.warn('[PuzzlePig sync] PIN migration skipped', e); }
     await pullAndMerge();
     subscribeRealtime();
     startSyncPoll();
@@ -10107,10 +10411,11 @@ init();
     // updated BEFORE the next pre-render pull runs (prevents the "approve twice" race).
     pushLog: async (cl) => { try { await pushChoreLog(cl); } catch(_){} },
     state: () => ({ familyId, role, familyCode, authUserId, kidLockedUserId }),
-    // v103: family-wide "a parent PIN exists" flag. See familyPinConfigured() in the
-    // main script, which is the only caller.
-    familyHasPin: fetchFamilyHasPin,
-    markFamilyHasPin: markFamilyHasPin,
+    // v104: the family parent-PIN hash. See familyPinConfigured() / ppVerifyTypedPin() /
+    // ppSaveFamilyPin() in the main script, which are the only callers.
+    parentPinStatus: parentPinStatus,
+    verifyParentPin: verifyParentPin,
+    setParentPin: setParentPin,
     reset: () => {
       localStorage.removeItem(LS_FAMILY_ID);
       localStorage.removeItem(LS_ROLE);
