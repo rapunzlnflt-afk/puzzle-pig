@@ -9,7 +9,7 @@
 <meta http-equiv="Expires" content="0">
 <meta name="copyright" content="© 2026 Shauna Wimberley / CleartrackApps. All rights reserved.">
 <title>Puzzle Pig</title>
-<script>window.__PP_BUILD__='2026-07-29T23:05Z-v102';</script>
+<script>window.__PP_BUILD__='2026-07-29T23:45Z-v103';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -1940,7 +1940,6 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
     <div id="kidPickWaiting" style="display:none; background:rgba(255,255,255,0.10); border:1px solid rgba(255,255,255,0.22); border-radius:16px; padding:28px 20px;">
       <div style="font-size:42px; margin-bottom:8px;">⏳</div>
       <div style="font-size:16px; font-weight:600; margin-bottom:6px;">Waiting for your parent…</div>
-      <div id="kidPickFamilyHint" style="font-size:12px; opacity:0.75; margin:6px 0 10px 0;"></div>
       <div style="font-size:13px; opacity:0.85; line-height:1.45;">Ask your parent to add you on their phone. You'll show up here as soon as they do.</div>
     </div>
 
@@ -3122,13 +3121,37 @@ function switchUser() {
 // ---- PIN System ----
 let parentUnlocked = false; // Session-level unlock — no repeated PIN entry
 
+// v103: does the FAMILY have a parent PIN, as opposed to just this device?
+// The cloud flag is authoritative. Once we have seen "yes" we latch it into
+// IndexedDB and never un-latch, so pulling the network cable cannot re-open the
+// self-enrolment hole below. Returns null when we genuinely cannot tell — no cloud
+// answer, no latch, or families.has_parent_pin not deployed yet — and callers then
+// fall back to the old permissive behaviour so nothing breaks before the SQL runs.
+async function familyPinConfigured() {
+  let cloud = null;
+  try {
+    if (window.ppSync && typeof window.ppSync.familyHasPin === 'function') {
+      cloud = await window.ppSync.familyHasPin();
+    }
+  } catch(_){}
+  if (cloud === true) {
+    try { await dbPutSetting('familyHasPin', '1'); } catch(_){}
+    return true;
+  }
+  try { if (await dbGetSetting('familyHasPin') === '1') return true; } catch(_){}
+  return cloud;
+}
+
 async function requestPinFor(action, extra) {
-  // Jar-edit actions (rename/add/withdraw) are not parent-gated — the child owns their jars.
-  // Skip the PIN flow entirely for these.
-  if (action === 'jar-edit-name' || action === 'jar-add-money' || action === 'jar-withdraw') {
+  // Rename and Withdraw stay ungated — the child owns their jars. Renaming is
+  // cosmetic, and a withdrawal is the child recording that they spent money they
+  // already had, so neither one creates value out of nothing.
+  // v103: 'jar-add-money' is NO LONGER in this list. Add was the shortest path to a
+  // child paying themselves — no chore, no approval, no parent mode — so it now
+  // falls through to the parent PIN like approve/reject do.
+  if (action === 'jar-edit-name' || action === 'jar-withdraw') {
     if (action === 'jar-edit-name') return jarEditName(extra);
-    if (action === 'jar-add-money') return jarAddMoney(extra);
-    if (action === 'jar-withdraw') return jarWithdraw(extra);
+    return jarWithdraw(extra);
   }
   // v84: 'exit-to-parent' (leaving the child's immersive screen back to the parent
   // dashboard) ALWAYS requires a fresh PIN, even if parentUnlocked is still true from
@@ -3158,15 +3181,28 @@ async function requestPinFor(action, extra) {
     return;
   }
 
-  // If no PIN set yet, start setup flow first
+  // If no PIN set yet, start setup flow first.
+  // v103: but only when the FAMILY has no PIN either. Otherwise this prompt was the
+  // gate turning itself into an enrolment form: a child who reached parent mode on a
+  // device that had never seen a PIN was invited to choose one, and their pending
+  // chore was then approved. The PIN value is still device-local, so a genuine
+  // parent's second device has to approve on the device that holds the PIN until PIN
+  // sync ships. A device that already holds the PIN is unaffected, so Change PIN
+  // still works.
   const storedPin = await dbGetSetting('parentPin');
-  if (!storedPin && action !== 'setup' && action !== 'setup-confirm') {
-    pinCallback = { action, extra };
-    requestPinFor('setup');
-    return;
+  if (!storedPin && action !== 'setup-confirm') {
+    if (await familyPinConfigured() === true) {
+      alert("This device doesn't have your family's parent PIN.\n\nYour family already set one, so a new device can't choose a different PIN. Use the device where the PIN was set up.");
+      return;
+    }
+    if (action !== 'setup') {
+      pinCallback = { action, extra };
+      requestPinFor('setup');
+      return;
+    }
   }
   // After setup completes, restore original action
-  
+
   pinCallback = { action, extra };
   const overlay = document.getElementById('pinOverlay');
   const title = document.getElementById('pinTitle');
@@ -3229,6 +3265,15 @@ async function submitPin() {
       return;
     }
     await dbPutSetting('parentPin', pin);
+    // v103: record family-wide that a parent PIN now exists so no other device is
+    // offered the "choose a PIN" prompt. Best-effort — if the cloud flag can't be
+    // written, the local latch still protects this device.
+    try { await dbPutSetting('familyHasPin', '1'); } catch(_){}
+    try {
+      if (window.ppSync && typeof window.ppSync.markFamilyHasPin === 'function') {
+        await window.ppSync.markFamilyHasPin();
+      }
+    } catch(_){}
     closePinOverlay();
     parentUnlocked = true;
     _submittingPin = false;
@@ -6414,7 +6459,9 @@ function renderJarDetail() {
       <div class="jar-detail-balance">$${fmtNum(jar.balance || 0)}</div>
     </div>
 
-    <!-- Edit actions (PIN-gated) -->
+    <!-- Jar actions. Only "Add" is PIN-gated (v103) — it is the one button here that
+         creates money. Rename, Withdraw and Move are deliberately ungated: the child
+         owns their jars, and none of those three increase the total they hold. -->
     <div class="card" style="margin-bottom:var(--space-3);">
       <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-3);">
         <button class="btn-sm btn-outline" style="flex:1;" onclick="requestPinFor('jar-edit-name','${jar.id}')">
@@ -8137,31 +8184,11 @@ init();
       throw 'PP_RESET_RELOAD';
     }
   } catch(e){ if (e === 'PP_RESET_RELOAD') { /* intentional early-out */ } }
-  // ---------- testing shortcut: ?role=kid | ?role=parent ----------
-  // Lets you jump straight to the kid or parent side via the URL.
-  // e.g. app.html?role=kid  or  app.html?role=parent
-  try {
-    const _r = new URLSearchParams(location.search).get('role');
-    if (_r) {
-      const _v = _r.toLowerCase();
-      let _forced = null;
-      if (['kid','child','sophie'].includes(_v))       _forced = 'child';
-      else if (['parent','mom','dad'].includes(_v))     _forced = 'parent';
-      if (_forced) {
-        role = _forced;
-        localStorage.setItem(LS_ROLE, role);
-        // Only strip ?role= here if there is NO ?family= param. When a family
-        // code is present, tryUrlAutoJoin() (in bootSync) still needs to read
-        // both family+role to complete the join; it cleans up the URL itself.
-        const _hasFamily = new URLSearchParams(location.search).get('family');
-        if (!_hasFamily) {
-          const _url = new URL(location.href);
-          _url.searchParams.delete('role');
-          history.replaceState(null, '', _url.pathname + _url.search + _url.hash);
-        }
-      }
-    }
-  } catch(_){}
+  // v103: the ?role=kid|parent testing shortcut used to live here and has been
+  // removed. It set pp_role directly, so ?role=parent turned any already-joined
+  // device — including a child's phone — into a parent with no family code and no
+  // PIN, then scrubbed the URL so it looked normal. Role now comes only from the
+  // setup flow (see wireSetupUI) or from what that flow previously saved locally.
   let familyCode = localStorage.getItem(LS_CODE)    || null;
   // Apply body class as early as possible so CSS hides the wrong screens before init() runs
   try {
@@ -9590,9 +9617,12 @@ init();
       };
       parentBtn._wired = true;
     }
-    // Show the family code on the waiting screen so kid can confirm it matches parent's
-    const hint = document.getElementById('kidPickFamilyHint');
-    if (hint) hint.textContent = familyCode ? ('Family code: ' + familyCode) : '';
+    // v103: the family code used to be printed here "so the kid can confirm it matches
+    // the parent's". It is also the credential that grants parent role, so showing it
+    // to the child handed them the keys — they could clear this device, tap
+    // "I'm a Parent" → "Rejoin", type it in, and approve their own chores. The waiting
+    // card now just says a parent needs to add them. The parent still sees the code on
+    // their own device (parent settings and each kid card).
   }
 
   function renderKidPickGrid(){
@@ -9837,6 +9867,34 @@ init();
     } catch(e){ console.warn('[PuzzlePig sync] ensureProfileLink threw', e); }
   }
 
+  // ---------- v103: family-level "a parent PIN exists" flag ----------
+  // The PIN VALUE is still device-local (IndexedDB) and is deliberately NOT synced
+  // here. This boolean is the minimum needed to stop a brand-new device from being
+  // offered a fresh PIN to choose — which is how a child who reached parent mode used
+  // to pick their own PIN and approve their own chores.
+  // Both helpers return null/false rather than throwing when families.has_parent_pin
+  // has not been added yet, so the app keeps working before the SQL is applied.
+  async function fetchFamilyHasPin(){
+    if (!familyId) return null;
+    try {
+      const { data, error } = await sb.from('families').select('has_parent_pin').eq('id', familyId).limit(1);
+      if (error){ console.warn('[PuzzlePig sync] has_parent_pin unreadable', error.message || error); return null; }
+      const row = data && data[0];
+      if (!row || row.has_parent_pin == null) return null;
+      return !!row.has_parent_pin;
+    } catch(e){ console.warn('[PuzzlePig sync] has_parent_pin fetch threw', e); return null; }
+  }
+  // Only ever sets the flag TRUE, and only via an RPC, so no device needs UPDATE
+  // rights on the families row (which also holds the family code).
+  async function markFamilyHasPin(){
+    if (!familyId) return false;
+    try {
+      const { error } = await sb.rpc('set_family_has_parent_pin', { p_family_id: familyId });
+      if (error){ console.warn('[PuzzlePig sync] could not set has_parent_pin', error.message || error); return false; }
+      return true;
+    } catch(e){ console.warn('[PuzzlePig sync] set has_parent_pin threw', e); return false; }
+  }
+
   async function onFamilyReady(){
     if (!familyId) return;
     // If this is a kid device, lock the UI down immediately so the parent
@@ -9853,6 +9911,14 @@ init();
     // Link the current anon auth user to this family so RLS lets us read.
     // MUST run before the first pull or realtime subscribe.
     await ensureProfileLink();
+    // v103: back-fill the family flag for families that set a PIN before the flag
+    // existed. Only a device that actually holds the PIN can assert it, so a child's
+    // phone can never turn this on.
+    try {
+      if (role === 'parent' && typeof dbGetSetting === 'function' && await dbGetSetting('parentPin')){
+        if (await fetchFamilyHasPin() !== true) await markFamilyHasPin();
+      }
+    } catch(e){ console.warn('[PuzzlePig sync] has_parent_pin back-fill skipped', e); }
     await pullAndMerge();
     subscribeRealtime();
     startSyncPoll();
@@ -9937,27 +10003,29 @@ init();
   }
 
   // ---------- boot ----------
-  // ---------- testing shortcut: ?family=CODE&role=kid|parent ----------
-  // Joins your real family by code and jumps straight to the kid or parent side.
-  // e.g. app.html?family=ABC123&role=kid   or   ...&role=parent
-  // Reuses the app's own secure join flow (pulls the real roster from the server).
+  // ---------- kid invite deep link: ?family=CODE&role=kid ----------
+  // This is the link ppInviteLink()/ppShareInvite() builds so a parent can text or
+  // AirDrop an invite instead of reading the code out loud. It reuses the app's own
+  // join flow, so the roster still comes from the server.
+  // v103: it now joins as a CHILD and nothing else. It used to honour role=parent
+  // too, which made ?family=CODE&role=parent a one-link authorization bypass — a
+  // shared or forwarded invite handed out parent rights. Becoming a parent requires
+  // going through "I'm a Parent" and typing the code in by hand.
   async function tryUrlAutoJoin(){
-    let code, wantRole;
+    let code = '', isKidInvite = false;
     try {
       const qs = new URLSearchParams(location.search);
       code = (qs.get('family') || '').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
-      const r = (qs.get('role') || '').toLowerCase();
-      if (['kid','child','sophie'].includes(r)) wantRole = 'child';
-      else if (['parent','mom','dad'].includes(r)) wantRole = 'parent';
+      isKidInvite = ['kid','child','sophie'].includes((qs.get('role') || '').toLowerCase());
     } catch(_){ return false; }
-    if (code.length !== 6 || !wantRole) return false;
-    // Already in this family with the right role? Nothing to do.
-    if (familyId && role === wantRole && familyCode === code) return true;
+    if (code.length !== 6 || !isKidInvite) return false;
+    // Already in this family as a kid? Nothing to do.
+    if (familyId && role === 'child' && familyCode === code) return true;
     const okAuth = await ensureAnonAuth(); if (!okAuth) return false;
     try {
       const { data, error } = await sb.rpc('join_family_for_current_user', {
         p_family_code: code,
-        p_display_name: wantRole === 'child' ? 'Kid' : 'Parent'
+        p_display_name: 'Kid'
       });
       if (error){ console.error('[PuzzlePig] url auto-join error', error); return false; }
       let famId = null;
@@ -9969,13 +10037,13 @@ init();
         if (famRows && famRows[0]) famId = famRows[0].id;
       }
       if (!famId) return false;
-      familyId = famId; role = wantRole; familyCode = code;
+      familyId = famId; role = 'child'; familyCode = code;
       localStorage.setItem(LS_FAMILY_ID, familyId);
       localStorage.setItem(LS_ROLE, role);
       localStorage.setItem(LS_CODE, code);
       try {
         document.body.classList.remove('pp-parent-mode','pp-kid-mode');
-        document.body.classList.add(role === 'child' ? 'pp-kid-mode' : 'pp-parent-mode');
+        document.body.classList.add('pp-kid-mode');
       } catch(_){}
       // strip the query so refreshes stay clean
       try {
@@ -10011,7 +10079,7 @@ init();
       showSetupOverlay();
       return;
     }
-    // Testing shortcut via URL (?family=CODE&role=kid|parent)
+    // Kid invite deep link (?family=CODE&role=kid)
     await tryUrlAutoJoin();
     if (familyId && role){
       // Returning user
@@ -10039,6 +10107,10 @@ init();
     // updated BEFORE the next pre-render pull runs (prevents the "approve twice" race).
     pushLog: async (cl) => { try { await pushChoreLog(cl); } catch(_){} },
     state: () => ({ familyId, role, familyCode, authUserId, kidLockedUserId }),
+    // v103: family-wide "a parent PIN exists" flag. See familyPinConfigured() in the
+    // main script, which is the only caller.
+    familyHasPin: fetchFamilyHasPin,
+    markFamilyHasPin: markFamilyHasPin,
     reset: () => {
       localStorage.removeItem(LS_FAMILY_ID);
       localStorage.removeItem(LS_ROLE);
