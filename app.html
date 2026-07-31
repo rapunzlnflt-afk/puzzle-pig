@@ -3252,6 +3252,18 @@ async function ppPinHash(pin) {
 
 function ppCachedPinHash() { return dbGetSetting('parentPinHash'); }
 
+// Can a "no" from the PIN RPCs be believed over this device's cache? Only when the
+// session really is linked to this family — otherwise the "no" is about the session,
+// not about the family, and acting on it locks the parent out of their own phone.
+async function ppServerAnswerTrusted() {
+  try {
+    if (window.ppSync && typeof window.ppSync.familyLinkVerified === 'function') {
+      return (await window.ppSync.familyLinkVerified()) === true;
+    }
+  } catch(_){}
+  return false;
+}
+
 // Cache the hash so this device can verify offline, and latch "the family has a PIN"
 // so pulling the network cable cannot re-open the self-enrolment hole.
 async function ppCachePinHash(hash) {
@@ -3261,9 +3273,12 @@ async function ppCachePinHash(hash) {
 }
 
 // Does the FAMILY have a parent PIN? true / false / null when we cannot tell (offline).
-// An explicit false from the server is authoritative: that is the support path (the
-// owner clears families.parent_pin_hash for a locked-out family), so we drop the local
-// cache too, otherwise this device would keep failing verification forever.
+// An explicit false from the server is authoritative ONLY when this session is provably
+// linked to the family: that is the support path (the owner clears
+// families.parent_pin_hash for a locked-out family), so we drop the local cache too,
+// otherwise this device would keep failing verification forever. An unlinked session
+// gets the same bare `false` and must not be allowed to disarm the device —
+// see ppSync.familyLinkVerified().
 async function familyPinConfigured() {
   let cloud = null;
   try {
@@ -3276,6 +3291,7 @@ async function familyPinConfigured() {
     try { await dbPutSetting('familyHasPin', '1'); } catch(_){}
     return true;
   }
+  if (cloud === false && !(await ppServerAnswerTrusted())) cloud = null;
   if (cloud === false) {
     try {
       if (await dbGetSetting('parentPinPendingPush') !== '1') {
@@ -3303,9 +3319,11 @@ async function ppVerifyTypedPin(pin) {
     } catch(_){}
     if (rpc && rpc.ok) {
       if (rpc.value === true) { await ppCachePinHash(hash); return true; }
-      // The server may say no because the family has no PIN at all (support reset).
-      // Only trust it over the local cache when there is nothing waiting to be pushed.
-      if (await dbGetSetting('parentPinPendingPush') !== '1') return false;
+      // The server may say no because the family has no PIN at all (support reset) — but
+      // it also says no to a session that is linked to no family, where the typed PIN may
+      // be perfectly correct. Only trust the refusal over the local cache when the link
+      // is verified and there is nothing waiting to be pushed.
+      if (await dbGetSetting('parentPinPendingPush') !== '1' && await ppServerAnswerTrusted()) return false;
     }
     const cached = await ppCachedPinHash();
     if (cached) return hash === cached;
@@ -10348,6 +10366,26 @@ init();
     }
   }
 
+  // v105: parent_pin_status answers a bare `false` in three situations the client must
+  // NOT treat alike — verified against the live database on 2026-07-31, all HTTP 200:
+  //   1. the family genuinely has no PIN   (authoritative; the support-reset path)
+  //   2. the caller's session is linked to no family at all (an anon session that rotated)
+  //   3. there is no user session at all, only the publishable key
+  // Cases 2 and 3 are transient and say nothing about the family. Acting on them deletes
+  // this device's cached hash and opens the parent gate, so the destructive branch in
+  // familyPinConfigured() asks this first and treats an unverified link as "cannot tell".
+  async function familyLinkVerified(){
+    if (!familyId || !authUserId) return false;
+    try {
+      const { data: sess } = await sb.auth.getSession();
+      if (!(sess && sess.session && sess.session.access_token)) return false;
+      const { data, error } = await sb.from('profiles')
+        .select('family_id').eq('user_id', authUserId).limit(1);
+      if (error) return false;
+      return !!(data && data[0] && data[0].family_id === familyId);
+    } catch(_){ return false; }
+  }
+
   const parentPinStatus = () => callPinRpc('parent_pin_status', {});
   const verifyParentPin = (hash) => callPinRpc('verify_parent_pin', { p_hash: hash });
   const setParentPin = (hash, oldHash) =>
@@ -10625,6 +10663,7 @@ init();
     parentPinStatus: parentPinStatus,
     verifyParentPin: verifyParentPin,
     setParentPin: setParentPin,
+    familyLinkVerified: familyLinkVerified,
     reset: () => {
       _ppResetting = true;
       localStorage.removeItem(LS_FAMILY_ID);
