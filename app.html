@@ -9,7 +9,7 @@
 <meta http-equiv="Expires" content="0">
 <meta name="copyright" content="© 2026 Shauna Wimberley / CleartrackApps. All rights reserved.">
 <title>Puzzle Pig</title>
-<script>window.__PP_BUILD__='2026-07-30T06:20Z-v104';</script>
+<script>window.__PP_BUILD__='2026-07-31T00:00Z-v105';</script>
 <script>
 /* v47 PWA cache fix: register a network-first service worker so home-screen
  * (iOS/Android) installs always fetch the freshest build instead of serving a
@@ -1789,6 +1789,96 @@ body.pp-kid-mode .current-user-bar { border-bottom: none; background: transparen
  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 </head>
 <body>
+<!-- ===== v105 boot screen =====
+     Every other screen in this file starts display:none, and on a parent device the one
+     init() reveals is force-hidden by `body.pp-parent-mode #userSelectScreen`. Nothing was
+     painted until routeParent() ran at the end of the whole sync chain, so a slow network
+     showed a blank window. This is the one element that starts VISIBLE, so the app has a
+     face from the first paint. ppBootDone() takes it away. -->
+<div id="ppBootScreen" style="
+  position:fixed; top:0; left:0; right:0; bottom:0;
+  width:100vw; height:100vh;
+  background: linear-gradient(160deg, #5C4287 0%, #6A4C96 60%, #7B5AA8 100%);
+  display:flex; align-items:center; justify-content:center;
+  z-index:99998;
+  padding:24px; box-sizing:border-box;
+  font-family:'DM Sans',system-ui,-apple-system,sans-serif;
+  color:#fff; text-align:center;
+">
+  <div style="width:100%; max-width:340px;">
+    <div id="ppBootSpinner" style="
+      width:40px; height:40px; margin:0 auto 20px;
+      border:3px solid rgba(255,255,255,0.25); border-top-color:#fff;
+      border-radius:50%; animation:ppBootSpin 0.9s linear infinite;
+    "></div>
+    <p id="ppBootMessage" style="font-size:16px; opacity:0.92; margin:0; line-height:1.45;">Loading your family…</p>
+    <button id="ppBootRetry" type="button" style="
+      display:none; margin:20px auto 0;
+      background:#fff; color:#5C4287; border:none;
+      padding:14px 28px; font-size:16px; font-weight:600;
+      border-radius:12px; cursor:pointer; font-family:inherit;
+    ">Try again</button>
+  </div>
+</div>
+<style>@keyframes ppBootSpin { to { transform: rotate(360deg); } }</style>
+<script>
+/* v105: the boot screen's controls. Defined inline, immediately after the markup, so the
+ * error path works even if something later in the file throws while parsing. */
+(function(){
+  var HARD_DEADLINE_MS = 12000;   // past this, stop spinning and let the user act
+  var done = false;
+  var timer = null;
+
+  function el(id){ try { return document.getElementById(id); } catch(_){ return null; } }
+
+  window.ppBootDone = function(){
+    if (done) return;
+    done = true;
+    if (timer) { clearTimeout(timer); timer = null; }
+    var b = el('ppBootScreen');
+    if (b && b.parentNode) b.parentNode.removeChild(b);
+  };
+
+  // Show a readable explanation plus a way out, instead of an indefinite spinner.
+  window.ppBootStalled = function(message){
+    if (done) return;
+    var spin = el('ppBootSpinner'); if (spin) spin.style.display = 'none';
+    var msg  = el('ppBootMessage');
+    if (msg) msg.textContent = message || "Puzzle Pig is having trouble reaching the internet. Your family's data is safe on this device.";
+    var btn = el('ppBootRetry');
+    if (btn){
+      btn.style.display = '';
+      btn.onclick = function(){ try { location.reload(); } catch(_){} };
+    }
+  };
+
+  timer = setTimeout(function(){ window.ppBootStalled(); }, HARD_DEADLINE_MS);
+
+  // Safety net: whichever screen wins the race, drop the boot cover as soon as something
+  // real is actually on screen. Cheaper and far harder to get wrong than calling
+  // ppBootDone() from every one of the routing paths scattered through this file.
+  // #userSelectScreen is deliberately NOT in this list: unlike every other screen it is
+  // `display:flex` by default (see its rule in the stylesheet), so it would fire at the
+  // very first tick. It is also never a real destination on a configured device — both
+  // `body.pp-parent-mode` and `body.pp-kid-mode` force it to display:none.
+  var SCREENS = ['app', 'familySetupScreen', 'kidPickScreen', 'kidPinScreen'];
+  var poll = setInterval(function(){
+    if (done) { clearInterval(poll); return; }
+    for (var i = 0; i < SCREENS.length; i++){
+      var s = el(SCREENS[i]);
+      if (!s) continue;
+      try {
+        if (getComputedStyle(s).display !== 'none' && s.getBoundingClientRect().height > 0){
+          clearInterval(poll);
+          window.ppBootDone();
+          return;
+        }
+      } catch(_){}
+    }
+  }, 200);
+})();
+</script>
+
 <!-- ===== Puzzle Pig: Family Setup Overlay (purple themed) ===== -->
 <div id="familySetupScreen" style="
   display:none;
@@ -8387,6 +8477,9 @@ init();
   const LS_KID_RESET_TOKEN = 'pp_kid_reset_token'; // last-seen reset_token for this kid
 
   // ---------- module state ----------
+  // v105: set while this load is detaching the device, so the family-link mirror below
+  // neither writes nor restores anything on the way out.
+  var _ppResetting = false;
   let familyId = localStorage.getItem(LS_FAMILY_ID) || null;
   let role     = localStorage.getItem(LS_ROLE)      || null;
   // ---------- recovery shortcut: ?reset=1 ----------
@@ -8404,12 +8497,21 @@ init();
         localStorage.removeItem(LS_KID_USER_ID);
         localStorage.removeItem(LS_KID_RESET_TOKEN);
       } catch(_){}
+      // `throw` below only skips the rest of this try block — the module keeps running
+      // until the reload commits, so the mirror helpers have to stand down explicitly.
+      _ppResetting = true;
+      familyId = null; role = null;
       // Strip ?reset= from the URL so a refresh doesn't loop, then reload clean.
-      try {
-        const _u = new URL(location.href);
-        _u.searchParams.delete('reset');
-        location.replace(_u.pathname + _u.search + _u.hash);
-      } catch(_){ location.reload(); }
+      // v105: drop the IndexedDB mirror first, otherwise recoverFamilyLink() would put
+      // the family straight back on the reload this triggers.
+      const _go = () => {
+        try {
+          const _u = new URL(location.href);
+          _u.searchParams.delete('reset');
+          location.replace(_u.pathname + _u.search + _u.hash);
+        } catch(_){ location.reload(); }
+      };
+      clearFamilyLinkMirror().then(_go, _go);
       // Nothing else should run this load; the reload above takes over.
       throw 'PP_RESET_RELOAD';
     }
@@ -8420,6 +8522,97 @@ init();
   // PIN, then scrubbed the URL so it looked normal. Role now comes only from the
   // setup flow (see wireSetupUI) or from what that flow previously saved locally.
   let familyCode = localStorage.getItem(LS_CODE)    || null;
+
+  // ---------- v105: keep a second copy of the family link in IndexedDB ----------
+  // The family identity lived ONLY in localStorage while every byte of actual family data
+  // lived in IndexedDB. Anything that clears localStorage on its own — WebKit's cap on
+  // script-writable storage, a "Clear Website Data", storage-pressure eviction, or simply
+  // opening the site in Safari rather than the installed home-screen app, which iOS gives a
+  // separate storage container — stranded a device that still had all of its data, and the
+  // only way back was to retype the family code. Mirroring the three values lets boot
+  // recover silently. dbPutSetting is a no-op until openDB() resolves, hence ppDbReady().
+  // The mirror reuses the LS_* key names as its IndexedDB setting keys — same names, a
+  // different store.
+  async function ppDbReady(){
+    for (let i = 0; i < 50 && typeof db !== 'undefined' && !db; i++){
+      await new Promise(r => setTimeout(r, 100));
+    }
+    return (typeof db !== 'undefined' && !!db);
+  }
+
+  // Called on every path that writes the family triple to localStorage.
+  async function persistFamilyLink(id, r, code){
+    try {
+      if (_ppResetting) return;
+      if (!await ppDbReady()) return;
+      if (id)   await dbPutSetting(LS_FAMILY_ID, id);
+      if (r)    await dbPutSetting(LS_ROLE, r);
+      if (code) await dbPutSetting(LS_CODE, code);
+    } catch(e){ console.warn('[PuzzlePig sync] could not mirror the family link', e); }
+  }
+
+  // Every path that detaches this device must clear the mirror too, or recovery below
+  // would simply put the family back on the next load.
+  async function clearFamilyLinkMirror(){
+    try {
+      if (!await ppDbReady()) return;
+      await dbDeleteSetting(LS_FAMILY_ID);
+      await dbDeleteSetting(LS_ROLE);
+      await dbDeleteSetting(LS_CODE);
+    } catch(e){ console.warn('[PuzzlePig sync] could not clear the family mirror', e); }
+  }
+
+  // Boot recovery. Restores localStorage from the IndexedDB mirror when localStorage has
+  // lost the family, and back-fills the mirror for devices that pre-date v105.
+  async function recoverFamilyLink(){
+    try {
+      if (_ppResetting) return false;
+      if (!await ppDbReady()) return false;
+      if (familyId && role){
+        await persistFamilyLink(familyId, role, familyCode);
+        return false;
+      }
+      const savedId   = await dbGetSetting(LS_FAMILY_ID);
+      const savedRole = await dbGetSetting(LS_ROLE);
+      if (!savedId || !savedRole) return false;
+      const savedCode = await dbGetSetting(LS_CODE);
+
+      familyId = savedId;
+      role     = savedRole;
+      if (savedCode) familyCode = savedCode;
+      try {
+        localStorage.setItem(LS_FAMILY_ID, familyId);
+        localStorage.setItem(LS_ROLE, role);
+        if (familyCode) localStorage.setItem(LS_CODE, familyCode);
+      } catch(_){}
+      try {
+        document.body.classList.remove('pp-parent-mode','pp-kid-mode');
+        document.body.classList.add(role === 'parent' ? 'pp-parent-mode' : 'pp-kid-mode');
+      } catch(_){}
+      console.warn('[PuzzlePig sync] localStorage had lost the family link — recovered it from IndexedDB');
+      return true;
+    } catch(e){ console.warn('[PuzzlePig sync] family-link recovery failed', e); return false; }
+  }
+
+  // v105: nothing on the first-paint path may wait on the network indefinitely. Resolves
+  // with `fallback` when the step overruns, so boot carries on offline-first exactly as it
+  // already does when a call fails outright; sync retries on its own poll afterwards.
+  function ppBootStep(promise, ms, label, fallback){
+    let t;
+    const deadline = new Promise((resolve) => {
+      t = setTimeout(() => {
+        console.warn('[PuzzlePig sync] ' + label + ' exceeded ' + ms + 'ms — continuing without it');
+        resolve(fallback);
+      }, ms);
+    });
+    return Promise.race([
+      Promise.resolve(promise).catch((e) => {
+        console.warn('[PuzzlePig sync] ' + label + ' failed', e);
+        return fallback;
+      }),
+      deadline
+    ]).finally(() => clearTimeout(t));
+  }
   // Apply body class as early as possible so CSS hides the wrong screens before init() runs
   try {
     if (role === 'parent') document.body.classList.add('pp-parent-mode');
@@ -9680,6 +9873,7 @@ init();
       localStorage.setItem(LS_FAMILY_ID, familyId);
       localStorage.setItem(LS_ROLE, role);
       localStorage.setItem(LS_CODE, code);
+      persistFamilyLink(familyId, role, code);
 
       document.getElementById('familyCodeDisplay').textContent = code;
       document.getElementById('familySetupHeadline').textContent = "You're set up. Share this code with your kid.";
@@ -9768,6 +9962,7 @@ init();
       localStorage.setItem(LS_FAMILY_ID, familyId);
       localStorage.setItem(LS_ROLE, role);
       localStorage.setItem(LS_CODE, code);
+      await persistFamilyLink(familyId, role, code);
       try {
         document.body.classList.remove('pp-parent-mode','pp-kid-mode');
         document.body.classList.add(asParent ? 'pp-parent-mode' : 'pp-kid-mode');
@@ -9822,12 +10017,13 @@ init();
       resetBtn.onclick = () => {
         const ok = confirm('Leave this family and start over?\n\nYou will need a new family code from your parent.');
         if (!ok) return;
+        _ppResetting = true;
         localStorage.removeItem(LS_FAMILY_ID);
         localStorage.removeItem(LS_ROLE);
         localStorage.removeItem(LS_CODE);
         localStorage.removeItem(LS_KID_USER_ID);
         localStorage.removeItem(LS_KID_RESET_TOKEN);
-        location.reload();
+        clearFamilyLinkMirror().then(() => location.reload(), () => location.reload());
       };
       resetBtn._wired = true;
     }
@@ -9838,6 +10034,7 @@ init();
     const parentBtn = document.getElementById('kidPickParentBtn');
     if (parentBtn && !parentBtn._wired){
       parentBtn.onclick = () => {
+        _ppResetting = true;
         localStorage.removeItem(LS_ROLE);
         localStorage.removeItem(LS_KID_USER_ID);
         localStorage.removeItem(LS_KID_RESET_TOKEN);
@@ -9845,7 +10042,7 @@ init();
         // but clearing the role guarantees boot shows the choice screen.
         localStorage.removeItem(LS_FAMILY_ID);
         localStorage.removeItem(LS_CODE);
-        location.reload();
+        clearFamilyLinkMirror().then(() => location.reload(), () => location.reload());
       };
       parentBtn._wired = true;
     }
@@ -10219,11 +10416,15 @@ init();
     }
     // Link the current anon auth user to this family so RLS lets us read.
     // MUST run before the first pull or realtime subscribe.
-    await ensureProfileLink();
+    // v105: these three used to be awaited unbounded, and routeParent() at the end of
+    // this function is the FIRST thing that paints for a returning parent — so a slow
+    // (not failed) network meant a blank window for as long as the platform allowed.
+    // ppBootStep resolves instead of hanging; the app then boots on its local data and
+    // the sync poll started below retries, exactly as it already does when a call fails.
+    await ppBootStep(ensureProfileLink(), 6000, 'ensureProfileLink');
     // v104: move any pre-v104 device-local PIN up to the family row.
-    try { await migrateLocalPinToFamily(); }
-    catch(e){ console.warn('[PuzzlePig sync] PIN migration skipped', e); }
-    await pullAndMerge();
+    await ppBootStep(migrateLocalPinToFamily(), 6000, 'PIN migration');
+    await ppBootStep(pullAndMerge(), 8000, 'first pull');
     subscribeRealtime();
     startSyncPoll();
     if (role === 'child'){
@@ -10345,6 +10546,7 @@ init();
       localStorage.setItem(LS_FAMILY_ID, familyId);
       localStorage.setItem(LS_ROLE, role);
       localStorage.setItem(LS_CODE, code);
+      await persistFamilyLink(familyId, role, code);
       try {
         document.body.classList.remove('pp-parent-mode','pp-kid-mode');
         document.body.classList.add('pp-kid-mode');
@@ -10361,7 +10563,14 @@ init();
 
   async function bootSync(){
     wireSetupUI();
-    const ok = await ensureAnonAuth();
+    // v105: the family link (id/role/code) lives only in localStorage, while every byte
+    // of family data lives in IndexedDB — so anything that clears localStorage alone
+    // (iOS storage eviction, opening the site in Safari rather than the installed PWA,
+    // which get separate containers) stranded a fully-populated device on the "enter
+    // your family code" screen. Mirror it into IndexedDB and restore it here, before
+    // anything decides whether this device is configured.
+    await recoverFamilyLink();
+    const ok = await ppBootStep(ensureAnonAuth(), 8000, 'anon auth', false);
     // v89 FIX (blank screen): a RETURNING user already has familyId+role saved in
     // localStorage. Previously, if the anonymous Supabase sign-in failed for ANY reason
     // (flaky wifi, cold auth endpoint, a momentary network blip at the exact instant the
@@ -10417,12 +10626,13 @@ init();
     verifyParentPin: verifyParentPin,
     setParentPin: setParentPin,
     reset: () => {
+      _ppResetting = true;
       localStorage.removeItem(LS_FAMILY_ID);
       localStorage.removeItem(LS_ROLE);
       localStorage.removeItem(LS_CODE);
       localStorage.removeItem(LS_KID_USER_ID);
       localStorage.removeItem(LS_KID_RESET_TOKEN);
-      location.reload();
+      clearFamilyLinkMirror().then(() => location.reload(), () => location.reload());
     },
     // v57: RECOVER LOCAL-ONLY CHORES. Reads chores straight from IndexedDB (the
     // real on-device source of truth — NOT the _memChores mirror, which a stray
