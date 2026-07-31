@@ -11,10 +11,15 @@
  * offline. It also calls skipWaiting()/clients.claim() so a new SW takes over
  * immediately instead of waiting for every tab to close.
  */
-const PP_SW_VERSION = 'pp-v104';
+const PP_SW_VERSION = 'pp-v105';
 const PP_CACHE = 'puzzle-pig-' + PP_SW_VERSION;
 // The app shell we want to keep available offline.
 const PP_SHELL = ['./app.html', './index.html', './'];
+// v105: how long the shell fetch may hold the navigation open before we fall back to
+// the cached copy. respondWith() gates the navigation, so until it settles the browser
+// has NO html and the window is blank — a slow (as opposed to failed) network used to
+// blank the app for as long as the platform's own request timeout, ~60s on iOS.
+const PP_SHELL_TIMEOUT_MS = 3500;
 
 self.addEventListener('install', (event) => {
   // Activate the new SW as soon as it is installed — do not wait.
@@ -54,21 +59,35 @@ self.addEventListener('fetch', (event) => {
                   url.pathname.endsWith('/');
 
   if (isShell) {
-    // NETWORK-FIRST: always try to get the freshest app shell; fall back to cache offline.
-    // v72: fetch the shell from a cache-busted URL with no-store so neither the HTTP
-    // cache nor any intermediary can hand back a stale app.html on iOS PWAs.
+    // NETWORK-FIRST WITH A DEADLINE: still prefer the freshest app shell, but never let a
+    // slow network hold the navigation open. v72: fetch from a cache-busted URL with
+    // no-store so neither the HTTP cache nor any intermediary can hand back a stale
+    // app.html on iOS PWAs.
     event.respondWith((async () => {
-      try {
-        const bust = new URL(req.url);
-        bust.searchParams.set('sw_fresh', Date.now().toString());
-        const fresh = await fetch(bust.toString(), { cache: 'no-store' });
-        const cache = await caches.open(PP_CACHE);
+      const bust = new URL(req.url);
+      bust.searchParams.set('sw_fresh', Date.now().toString());
+
+      const network = fetch(bust.toString(), { cache: 'no-store' }).then((fresh) => {
         // Store under the ORIGINAL request key so offline fallback still matches.
-        cache.put(req, fresh.clone()).catch(() => {});
+        caches.open(PP_CACHE)
+          .then((cache) => cache.put(req, fresh.clone()))
+          .catch(() => {});
         return fresh;
+      });
+      // A rejection here is handled below; this keeps it from also surfacing as an
+      // unhandled rejection when the cache wins the race.
+      network.catch(() => {});
+
+      const cached = await caches.match(req) || await caches.match('./app.html');
+      if (!cached) return network;   // first ever load: the network is all we have
+
+      const timeout = new Promise((resolve) => setTimeout(() => resolve(null), PP_SHELL_TIMEOUT_MS));
+      try {
+        // Serve the cached shell the moment the network overruns; the in-flight fetch
+        // above still refreshes the cache, so the next load gets the new build.
+        return (await Promise.race([network, timeout])) || cached;
       } catch (_) {
-        const cached = await caches.match(req);
-        return cached || caches.match('./app.html');
+        return cached;
       }
     })());
     return;
