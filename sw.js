@@ -11,7 +11,7 @@
  * offline. It also calls skipWaiting()/clients.claim() so a new SW takes over
  * immediately instead of waiting for every tab to close.
  */
-const PP_SW_VERSION = 'pp-v105';
+const PP_SW_VERSION = 'pp-v106';
 const PP_CACHE = 'puzzle-pig-' + PP_SW_VERSION;
 // The app shell we want to keep available offline.
 const PP_SHELL = ['./app.html', './index.html', './'];
@@ -21,12 +21,41 @@ const PP_SHELL = ['./app.html', './index.html', './'];
 // blank the app for as long as the platform's own request timeout, ~60s on iOS.
 const PP_SHELL_TIMEOUT_MS = 3500;
 
+// v106: Safari aborts a navigation with "response served by service worker has
+// redirections" whenever respondWith() resolves to a response that followed a redirect,
+// and a redirect stored in Cache Storage keeps its redirected flag, so it reproduces the
+// failure on every later load. Every response this SW returns for a shell request, and
+// everything it writes to Cache Storage, goes through here first; a redirected one is
+// rebuilt as a plain 200 carrying the same body.
+function ppIsRedirected(res) {
+  return !!res && (res.redirected === true || (res.status >= 300 && res.status < 400));
+}
+
+async function ppNoRedirect(res) {
+  if (!ppIsRedirected(res)) return res;
+  return new Response(await res.blob(), {
+    status: 200,
+    statusText: 'OK',
+    headers: res.headers
+  });
+}
+
 self.addEventListener('install', (event) => {
   // Activate the new SW as soon as it is installed — do not wait.
   self.skipWaiting();
-  event.waitUntil(
-    caches.open(PP_CACHE).then((cache) => cache.addAll(PP_SHELL).catch(() => {}))
-  );
+  // v106: precache the shell by hand instead of addAll(), which happily stores a
+  // redirected response and so poisons the shell cache on a redirecting origin.
+  event.waitUntil((async () => {
+    try {
+      const cache = await caches.open(PP_CACHE);
+      await Promise.all(PP_SHELL.map(async (path) => {
+        try {
+          const res = await fetch(path, { cache: 'no-store' });
+          if (res.ok) await cache.put(path, await ppNoRedirect(res));
+        } catch (_) {}
+      }));
+    } catch (_) {}
+  })());
 });
 
 self.addEventListener('activate', (event) => {
@@ -67,12 +96,15 @@ self.addEventListener('fetch', (event) => {
       const bust = new URL(req.url);
       bust.searchParams.set('sw_fresh', Date.now().toString());
 
-      const network = fetch(bust.toString(), { cache: 'no-store' }).then((fresh) => {
+      const network = fetch(bust.toString(), { cache: 'no-store' }).then(async (fresh) => {
+        // v106: strip the redirect BEFORE the response is either cached or returned, so
+        // neither this navigation nor any later one is served a redirected response.
+        const safe = await ppNoRedirect(fresh);
         // Store under the ORIGINAL request key so offline fallback still matches.
         caches.open(PP_CACHE)
-          .then((cache) => cache.put(req, fresh.clone()))
+          .then((cache) => cache.put(req, safe.clone()))
           .catch(() => {});
-        return fresh;
+        return safe;
       });
       // A rejection here is handled below; this keeps it from also surfacing as an
       // unhandled rejection when the cache wins the race.
@@ -85,9 +117,10 @@ self.addEventListener('fetch', (event) => {
       try {
         // Serve the cached shell the moment the network overruns; the in-flight fetch
         // above still refreshes the cache, so the next load gets the new build.
-        return (await Promise.race([network, timeout])) || cached;
+        // ppNoRedirect() also covers a cache entry poisoned by an earlier SW version.
+        return (await Promise.race([network, timeout])) || await ppNoRedirect(cached);
       } catch (_) {
-        return cached;
+        return await ppNoRedirect(cached);
       }
     })());
     return;
@@ -98,7 +131,7 @@ self.addEventListener('fetch', (event) => {
     const cached = await caches.match(req);
     if (cached) return cached;
     try {
-      const fresh = await fetch(req);
+      const fresh = await ppNoRedirect(await fetch(req));
       const cache = await caches.open(PP_CACHE);
       cache.put(req, fresh.clone()).catch(() => {});
       return fresh;
