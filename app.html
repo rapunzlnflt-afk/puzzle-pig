@@ -4,6 +4,202 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<!-- ===== License unlock screen (Lemon Squeezy) ===== -->
+<style id="lic-style">
+html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
+#licGate{visibility:visible;position:fixed;inset:0;z-index:2147483647;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  background:linear-gradient(160deg,#7a5cad 0%,#5C4287 55%,#46316a 100%);display:flex;align-items:flex-start;justify-content:center;padding:max(28px,env(safe-area-inset-top)) 18px 32px;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1f2733;-webkit-text-size-adjust:100%}
+#licGate *{box-sizing:border-box}
+#licGate .lic-card{width:100%;max-width:400px;margin:auto 0;background:#fff;border-radius:20px;padding:28px 24px 24px;box-shadow:0 24px 60px rgba(0,0,0,.25);text-align:center}
+#licGate .lic-icon{width:64px;height:64px;border-radius:16px;display:block;margin:0 auto 14px;box-shadow:0 4px 12px rgba(0,0,0,.18);object-fit:cover}
+#licGate h1{font-size:22px;line-height:1.2;font-weight:800;margin:0 0 6px;color:#1f2733;letter-spacing:-.01em}
+#licGate .lic-sub{font-size:15px;line-height:1.45;color:#4a5363;margin:0 0 18px}
+#licGate label{display:block;text-align:left;font-size:13px;font-weight:700;color:#1f2733;margin:0 0 6px}
+#licGate input{width:100%;font-size:16px;padding:13px 14px;border:2px solid #d5dae2;border-radius:12px;outline:none;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.02em;color:#1f2733;background:#fff}
+#licGate input:focus{border-color:#5C4287;box-shadow:0 0 0 3px rgba(92,66,135,.18)}
+#licGate .lic-go{width:100%;margin-top:12px;padding:14px;border:0;border-radius:12px;font-size:16px;font-weight:700;color:#fff;background:linear-gradient(135deg,#7a5cad,#5C4287);cursor:pointer}
+#licGate .lic-go[disabled]{opacity:.65;cursor:wait}
+#licGate .lic-err{min-height:20px;margin:10px 0 0;font-size:14px;line-height:1.4;color:#b42318;font-weight:600}
+#licGate .lic-err.ok{color:#177245}
+#licGate .lic-help{font-size:13.5px;line-height:1.5;color:#4a5363;margin:6px 0 0}
+#licGate a{color:#5C4287;font-weight:700}
+#licGate .lic-sep{height:1px;background:#e6e9ef;margin:20px 0 16px}
+#licGate .lic-q{font-size:14px;font-weight:700;margin:0 0 10px;color:#1f2733}
+#licGate .lic-buy{display:block;padding:13px;border-radius:12px;border:2px solid #5C4287;color:#5C4287;text-decoration:none;font-size:15.5px;font-weight:700}
+#licGate .lic-demo{display:inline-block;margin-top:12px;font-size:14.5px}
+#licGate .lic-old{font-size:12.5px;line-height:1.5;color:#5d6573;margin:16px 0 0}
+</style>
+<script>
+(function(){
+  var C = {"name": "Puzzle Pig", "storage": "ppLicense", "store": 478073, "product": 1525656, "limit": 5, "buy": "https://cleartrackapps.com/go/puzzle-pig/", "price": "$14.99", "demo": "https://cleartrackapps.com/puzzle-pig-demo/", "email": "cleartrackapps@gmail.com", "db": "PuzzlePigDB", "stores": ["goals", "users", "chores"]};
+  var API = 'https://api.lemonsqueezy.com/v1/licenses/';
+  var RECHECK_MS = 12 * 3600 * 1000;
+  var root = document.documentElement;
+
+  function read(){ try { return JSON.parse(localStorage.getItem(C.storage) || '{}') || {}; } catch(e){ return {}; } }
+  function write(s){ try { localStorage.setItem(C.storage, JSON.stringify(s)); } catch(e){} }
+  function now(){ return new Date().toISOString(); }
+
+  // The receipt button opens the app with ?key=..., so buyers can unlock in one tap.
+  function keyFromUrl(){
+    try {
+      var u = new URL(location.href);
+      var k = u.searchParams.get('key') || u.searchParams.get('license_key');
+      if (!k) return '';
+      u.searchParams.delete('key'); u.searchParams.delete('license_key');
+      history.replaceState(null, '', u.pathname + u.search + u.hash);
+      return k.replace(/[^A-Za-z0-9-]/g, '');
+    } catch(e){ return ''; }
+  }
+
+  function post(action, fields){
+    var body = Object.keys(fields).map(function(k){ return encodeURIComponent(k) + '=' + encodeURIComponent(fields[k]); }).join('&');
+    return fetch(API + action, { method:'POST', headers:{ 'Accept':'application/json', 'Content-Type':'application/x-www-form-urlencoded' }, body: body })
+      .then(function(r){ return r.json().catch(function(){ return {}; }); });
+  }
+  function ours(m){ return !!m && Number(m.store_id) === C.store && Number(m.product_id) === C.product; }
+  function deviceName(){
+    var ua = navigator.userAgent || '';
+    var kind = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows PC' : 'device';
+    return C.name + ' on ' + kind;
+  }
+
+  // Does this device already hold the full app's data? Opening without a version
+  // never creates the database: if it does not exist yet, the upgrade is aborted.
+  // Calls back true / false, or null when it cannot tell (then nothing is saved).
+  function hasData(cb){
+    var done = false, fresh = false;
+    function fin(v){ if (!done){ done = true; cb(v); } }
+    setTimeout(function(){ fin(null); }, 5000);
+    var req;
+    try { req = indexedDB.open(C.db); } catch(e){ return fin(null); }
+    req.onupgradeneeded = function(e){ if (e.oldVersion === 0){ fresh = true; try { req.transaction.abort(); } catch(_){} } };
+    req.onerror = function(e){ if (e && e.preventDefault) e.preventDefault(); fin(fresh ? false : null); };
+    req.onsuccess = function(){
+      var db = req.result;
+      var names = C.stores.filter(function(n){ return db.objectStoreNames.contains(n); });
+      if (!names.length){ db.close(); return fin(false); }
+      try {
+        var t = db.transaction(names, 'readonly'), total = 0, left = names.length;
+        names.forEach(function(n){
+          var c = t.objectStore(n).count();
+          c.onsuccess = function(){ total += c.result; if (--left === 0){ db.close(); fin(total > 0); } };
+          c.onerror = function(){ db.close(); fin(null); };
+        });
+      } catch(e){ db.close(); fin(null); }
+    };
+  }
+
+  function unlock(){
+    root.classList.remove('lic-wait');
+    var g = document.getElementById('licGate');
+    if (g) g.parentNode.removeChild(g);
+  }
+
+  function friendly(err){
+    var e = String(err || '');
+    if (/activation limit/i.test(e)) return 'This key is already in use on ' + C.limit + ' devices. Free one up from My Orders, then try again.';
+    if (/not found|invalid/i.test(e)) return "That key wasn't recognized. Copy it again from your receipt email.";
+    if (/disabled|expired|inactive/i.test(e)) return 'This key has been turned off. Email ' + C.email + ' and we will help.';
+    return e || "That key wasn't recognized.";
+  }
+
+  function activate(raw, ui){
+    var key = String(raw || '').trim();
+    if (!key){ ui('Paste the license key from your receipt email.'); return; }
+    ui('Checking your key…', 'busy');
+    post('activate', { license_key: key, instance_name: deviceName() }).then(function(d){
+      if (!d || !d.activated){ ui(friendly(d && d.error)); return; }
+      if (!ours(d.meta)){
+        post('deactivate', { license_key: key, instance_id: (d.instance && d.instance.id) || '' }).catch(function(){});
+        ui('That key is for a different product, not ' + C.name + '.');
+        return;
+      }
+      write({ status:'active', key: key, instanceId: (d.instance && d.instance.id) || null, since: now(), lastCheck: now() });
+      ui('Unlocked. Enjoy ' + C.name + '.', 'ok');
+      setTimeout(unlock, 700);
+    }).catch(function(){ ui("Couldn't reach the license server. Check your connection and try again."); });
+  }
+
+  function showGate(prefill, note){
+    function build(){
+      if (document.getElementById('licGate')) return;
+      var icon = document.querySelector('link[rel="apple-touch-icon"]') || document.querySelector('link[rel~="icon"]');
+      var g = document.createElement('div');
+      g.id = 'licGate'; g.setAttribute('role', 'dialog'); g.setAttribute('aria-modal', 'true'); g.setAttribute('aria-labelledby', 'licTitle');
+      g.innerHTML =
+        '<div class="lic-card">' +
+          (icon ? '<img class="lic-icon" alt="" src="' + icon.href + '">' : '') +
+          '<h1 id="licTitle">Unlock ' + C.name + '</h1>' +
+          '<p class="lic-sub">Enter the license key from your receipt email.</p>' +
+          '<form id="licForm" novalidate>' +
+            '<label for="licKey">License key</label>' +
+            '<input id="licKey" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="Paste your key here">' +
+            '<button class="lic-go" type="submit">Unlock</button>' +
+            '<p class="lic-err" id="licMsg" role="status" aria-live="polite"></p>' +
+          '</form>' +
+          '<p class="lic-help">One key works on up to ' + C.limit + ' devices. Lost your key? It is also in <a href="https://app.lemonsqueezy.com/my-orders" target="_blank" rel="noopener">My Orders</a> on Lemon Squeezy.</p>' +
+          '<div class="lic-sep"></div>' +
+          '<p class="lic-q">Don\u2019t have ' + C.name + ' yet?</p>' +
+          '<a class="lic-buy" href="' + C.buy + '">Buy now \u2014 ' + C.price + '</a>' +
+          '<a class="lic-demo" href="' + C.demo + '">Try the free demo</a>' +
+          '<p class="lic-old">Bought it on Gumroad or Etsy and seeing this on a new device? Email <a href="mailto:' + C.email + '">' + C.email + '</a> and we will send you a key.</p>' +
+        '</div>';
+      document.body.appendChild(g);
+      if (!icon) window.addEventListener('load', function(){
+        var l = document.querySelector('link[rel="apple-touch-icon"]') || document.querySelector('link[rel~="icon"]');
+        var card = g.querySelector('.lic-card');
+        if (l && card && !card.querySelector('.lic-icon')){ var im = document.createElement('img'); im.className = 'lic-icon'; im.alt = ''; im.src = l.href; card.insertBefore(im, card.firstChild); }
+      });
+      var input = g.querySelector('#licKey'), msg = g.querySelector('#licMsg'), btn = g.querySelector('.lic-go');
+      function ui(text, kind){
+        msg.textContent = text || '';
+        msg.className = 'lic-err' + (kind === 'ok' ? ' ok' : '');
+        btn.disabled = kind === 'busy';
+        if (kind === 'busy') msg.className = 'lic-err ok';
+      }
+      g.querySelector('#licForm').addEventListener('submit', function(e){ e.preventDefault(); activate(input.value, ui); });
+      if (note) ui(note);
+      if (prefill){ input.value = prefill; activate(prefill, ui); }
+    }
+    if (document.readyState !== 'loading') build(); else document.addEventListener('DOMContentLoaded', build);
+  }
+
+  // Re-ask the store about a saved key now and then. Only a clear "no" locks;
+  // offline or an odd reply changes nothing.
+  function recheck(s){
+    if (!s.key || !s.instanceId) return;
+    if (s.lastCheck && Date.now() - Date.parse(s.lastCheck) < RECHECK_MS) return;
+    if (navigator.onLine === false) return;
+    setTimeout(function(){
+      post('validate', { license_key: s.key, instance_id: s.instanceId }).then(function(d){
+        if (!d || (d.valid === undefined && !d.license_key)) return;
+        var cur = read();
+        if (d.valid && ours(d.meta)){ cur.lastCheck = now(); write(cur); return; }
+        var st = d.license_key && d.license_key.status;
+        if (st === 'disabled' || st === 'expired' || /not found/i.test(d.error || '')){
+          write({ status:'locked', seen: cur.since || now(), note: 'This key is no longer active. Email ' + C.email + ' if you think this is a mistake.' });
+        }
+      }).catch(function(){});
+    }, 4000);
+  }
+
+  var s = read();
+  var urlKey = keyFromUrl();
+  if (s.status === 'active' || s.status === 'grandfathered'){ recheck(s); return; }
+
+  root.classList.add('lic-wait');
+  if (s.status === 'locked'){ showGate(urlKey, urlKey ? '' : s.note); return; }
+
+  hasData(function(yes){
+    if (yes === true){ write({ status:'grandfathered', since: now() }); unlock(); return; }
+    if (yes === false) write({ status:'locked', seen: now() });
+    showGate(urlKey);
+  });
+})();
+</script>
+<!-- ===== end license unlock screen ===== -->
 <meta name="theme-color" content="#5C4287">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -28,7 +224,7 @@
 <meta name="twitter:description" content="Kids do chores, earn money, and split it between Save, Spend and Give jars, with a goal photo that reveals as they save. PIN-protected parent dashboard.">
 <meta name="twitter:image" content="https://cleartrackapps.com/assets/og-puzzle-pig.png">
 <link rel="canonical" href="https://cleartrackapps.com/puzzle-pig/">
-<script>window.__PP_BUILD__='2026-07-31T02:00Z-v107';</script>
+<script>window.__PP_BUILD__='2026-11-14T18:00Z-v108';</script>
 <style>
 html{background:#5C4287}
 #ppBootScreen{position:fixed;inset:0;width:100vw;height:100vh;
