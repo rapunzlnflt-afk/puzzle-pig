@@ -224,7 +224,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 <meta name="twitter:description" content="Kids do chores, earn money, and split it between Save, Spend and Give jars, with a goal photo that reveals as they save. PIN-protected parent dashboard.">
 <meta name="twitter:image" content="https://cleartrackapps.com/assets/og-puzzle-pig.png">
 <link rel="canonical" href="https://cleartrackapps.com/puzzle-pig/">
-<script>window.__PP_BUILD__='2026-11-14T18:00Z-v108';</script>
+<script>window.__PP_BUILD__='2026-11-15T05:30Z-v112';</script>
 <style>
 html{background:#5C4287}
 #ppBootScreen{position:fixed;inset:0;width:100vw;height:100vh;
@@ -3520,7 +3520,15 @@ async function familyPinConfigured() {
 
 // Is the typed PIN the family's PIN? Online the server decides; offline we compare
 // against the cached hash so approving a chore on a plane still works.
+// v112: set when the server refused because of too many wrong PINs, so the PIN
+// screen can say so instead of "Incorrect PIN".
+let ppPinTooManyTries = false;
+function ppWrongPinText(fallback) {
+  return ppPinTooManyTries ? 'Too many wrong PINs. Please wait 15 minutes, then try again.' : fallback;
+}
+
 async function ppVerifyTypedPin(pin) {
+  ppPinTooManyTries = false;
   const hash = await ppPinHash(pin);
   if (hash) {
     let rpc = null;
@@ -3529,6 +3537,7 @@ async function ppVerifyTypedPin(pin) {
         rpc = await window.ppSync.verifyParentPin(hash);
       }
     } catch(_){}
+    if (rpc && !rpc.ok && /too_many_pin_tries/.test(rpc.message || '')) ppPinTooManyTries = true;
     if (rpc && rpc.ok) {
       if (rpc.value === true) { await ppCachePinHash(hash); return true; }
       // The server may say no because the family has no PIN at all (support reset) — but
@@ -3784,7 +3793,7 @@ async function submitPin() {
   if (action === 'family-verify') {
     const ok = await ppVerifyTypedPin(pin);
     if (!ok) {
-      document.getElementById('pinError').textContent = 'Incorrect PIN';
+      document.getElementById('pinError').textContent = ppWrongPinText('Incorrect PIN');
       document.querySelectorAll('.pin-digit').forEach(d => d.value = '');
       document.querySelector('.pin-digit[data-idx="0"]').focus();
       _submittingPin = false;
@@ -3810,7 +3819,7 @@ async function submitPin() {
   if (action === 'change-pin-current') {
     const ok = await ppVerifyTypedPin(pin);
     if (!ok) {
-      document.getElementById('pinError').textContent = "That's not your current PIN.";
+      document.getElementById('pinError').textContent = ppWrongPinText("That's not your current PIN.");
       document.querySelectorAll('.pin-digit').forEach(d => d.value = '');
       document.querySelector('.pin-digit[data-idx="0"]').focus();
       _submittingPin = false;
@@ -3852,7 +3861,7 @@ async function submitPin() {
 
   // Verify — server-side when online, against the cached hash when offline.
   if (!(await ppVerifyTypedPin(pin))) {
-    document.getElementById('pinError').textContent = 'Incorrect PIN';
+    document.getElementById('pinError').textContent = ppWrongPinText('Incorrect PIN');
     document.querySelectorAll('.pin-digit').forEach(d => d.value = '');
     document.querySelector('.pin-digit[data-idx="0"]').focus();
     _submittingPin = false;
@@ -8887,6 +8896,22 @@ init();
   }
 
   // 6-char code: A-Z + 2-9, excluding ambiguous I, O, 0, 1
+  // v112: joins go through pp_join_family, which answers {ok, family_id} or
+  // {ok:false, error} instead of raising, so the server can count wrong codes.
+  async function ppJoinFamily(code, asParent){
+    const { data, error } = await sb.rpc('pp_join_family', {
+      p_family_code: code, p_as_parent: !!asParent, p_display_name: asParent ? 'Parent' : 'Kid'
+    });
+    if (error) return { ok: false, message: error.message || String(error) };
+    if (data && data.ok && data.family_id) return { ok: true, familyId: data.family_id };
+    return { ok: false, code: (data && data.error) || 'unknown' };
+  }
+  function ppJoinErrorText(r){
+    if (r.code === 'rate_limited') return 'Too many tries in a short time. Please wait a few minutes, then try again.';
+    if (r.code === 'not_found') return "That code didn't match a family. Double-check it and try again.";
+    return 'Could not join: ' + (r.message || r.code || '');
+  }
+
   function genFamilyCode(){
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let out = '';
@@ -10074,12 +10099,21 @@ init();
     const startNewFamily = async () => {
       setStatus('Creating your family…');
       const ok = await ensureAnonAuth(); if (!ok) return;
-      const code = genFamilyCode();
-      const { data, error } = await sb.rpc('create_family_for_current_user', {
-        p_family_name: 'My Family',
-        p_family_code: code,
-        p_display_name: 'Parent'
-      });
+      // v112: a taken code (or too many tries) comes back as null, not an error,
+      // so try a few fresh codes before giving up.
+      let code = '', data = null, error = null;
+      for (let attempt = 0; attempt < 3 && !data && !error; attempt++){
+        code = genFamilyCode();
+        ({ data, error } = await sb.rpc('create_family_for_current_user', {
+          p_family_name: 'My Family',
+          p_family_code: code,
+          p_display_name: 'Parent'
+        }));
+      }
+      if (!error && !data){
+        setStatus("Couldn't create your family right now. Please wait a few minutes, then try again.", true);
+        return;
+      }
       if (error){
         console.error('[PuzzlePig sync] create family error', error);
         setStatus('Could not create family: ' + (error.message || ''), true);
@@ -10171,23 +10205,13 @@ init();
       // v104: a parent joins through join_family_as_parent, which writes role='parent'
       // server-side. The client used to call the child join and then patch its own
       // profiles.role, which is exactly the write Migration B revokes.
-      const { data, error } = asParent
-        ? await sb.rpc('join_family_as_parent', { p_family_code: code, p_display_name: 'Parent' })
-        : await sb.rpc('join_family_for_current_user', { p_family_code: code, p_display_name: 'Kid' });
-      if (error){
-        console.error('[PuzzlePig sync] join error', error);
-        setStatus('Could not join: ' + (error.message || ''), true);
+      const jr = await ppJoinFamily(code, asParent);
+      if (!jr.ok){
+        console.error('[PuzzlePig sync] join error', jr);
+        setStatus(ppJoinErrorText(jr), true);
         return;
       }
-      let famId = null;
-      if (data && typeof data === 'object'){
-        famId = data.family_id || data.id || (Array.isArray(data) && data[0] && (data[0].family_id || data[0].id));
-      } else if (typeof data === 'string'){ famId = data; }
-      if (!famId){
-        const { data: famRows } = await sb.from('families').select('id').eq('family_code', code).limit(1);
-        if (famRows && famRows[0]) famId = famRows[0].id;
-      }
-      if (!famId){ setStatus('Joined, but could not read family ID. Please refresh.', true); return; }
+      const famId = jr.familyId;
       familyId = famId; role = asParent ? 'parent' : 'child'; familyCode = code;
       localStorage.setItem(LS_FAMILY_ID, familyId);
       localStorage.setItem(LS_ROLE, role);
@@ -10535,8 +10559,8 @@ init();
           console.warn('[PuzzlePig sync] parent profile not linked and no family code held — cannot repair');
           return;
         }
-        const { error } = await sb.rpc('join_family_as_parent', { p_family_code: familyCode, p_display_name: 'Parent' });
-        if (error) console.warn('[PuzzlePig sync] join_family_as_parent (relink) failed', error.message || error);
+        const jr = await ppJoinFamily(familyCode, true);
+        if (!jr.ok) console.warn('[PuzzlePig sync] parent relink failed', jr.code || jr.message);
         else console.log('[PuzzlePig sync] parent profile linked server-side');
         return;
       }
@@ -10778,20 +10802,9 @@ init();
     if (familyId && role === 'child' && familyCode === code) return true;
     const okAuth = await ensureAnonAuth(); if (!okAuth) return false;
     try {
-      const { data, error } = await sb.rpc('join_family_for_current_user', {
-        p_family_code: code,
-        p_display_name: 'Kid'
-      });
-      if (error){ console.error('[PuzzlePig] url auto-join error', error); return false; }
-      let famId = null;
-      if (data && typeof data === 'object'){
-        famId = data.family_id || data.id || (Array.isArray(data) && data[0] && (data[0].family_id || data[0].id));
-      } else if (typeof data === 'string'){ famId = data; }
-      if (!famId){
-        const { data: famRows } = await sb.from('families').select('id').eq('family_code', code).limit(1);
-        if (famRows && famRows[0]) famId = famRows[0].id;
-      }
-      if (!famId) return false;
+      const jr = await ppJoinFamily(code, false);
+      if (!jr.ok){ console.error('[PuzzlePig] url auto-join error', jr); return false; }
+      const famId = jr.familyId;
       familyId = famId; role = 'child'; familyCode = code;
       localStorage.setItem(LS_FAMILY_ID, familyId);
       localStorage.setItem(LS_ROLE, role);
