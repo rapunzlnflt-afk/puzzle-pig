@@ -395,8 +395,10 @@ cursor:pointer;font-family:inherit}
           try { localStorage.setItem(LOOP_KEY, String(Date.now())); } catch(_){}
           var done = function(){ try { window.location.reload(); } catch(_){ try { window.location.href = './app.html?fresh=' + Date.now(); } catch(__){} } };
           var jobs = [];
-          try { if (window.caches && caches.keys) jobs.push(caches.keys().then(function(ks){ return Promise.all(ks.map(function(k){ return caches.delete(k); })); })); } catch(_){}
-          try { if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){ return Promise.all(rs.map(function(rg){ return rg.unregister(); })); })); } catch(_){}
+          // Only Puzzle Pig's own caches and service worker; other apps share cleartrackapps.com.
+          var ownScope = new URL('./', location.href).href;
+          try { if (window.caches && caches.keys) jobs.push(caches.keys().then(function(ks){ return Promise.all(ks.filter(function(k){ return k.indexOf('puzzle-pig-') === 0; }).map(function(k){ return caches.delete(k); })); })); } catch(_){}
+          try { if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){ return Promise.all(rs.filter(function(rg){ return rg.scope.indexOf(ownScope) === 0; }).map(function(rg){ return rg.unregister(); })); })); } catch(_){}
           Promise.all(jobs).then(done, done);
           // Safety net in case the promises hang.
           setTimeout(done, 2500);
