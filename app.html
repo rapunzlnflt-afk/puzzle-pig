@@ -224,7 +224,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 <meta name="twitter:description" content="Kids do chores, earn money, and split it between Save, Spend and Give jars, with a goal photo that reveals as they save. PIN-protected parent dashboard.">
 <meta name="twitter:image" content="https://cleartrackapps.com/assets/og-puzzle-pig.png">
 <link rel="canonical" href="https://cleartrackapps.com/puzzle-pig/">
-<script>window.__PP_BUILD__='2026-11-18T19:00Z-v121';</script>
+<script>window.__PP_BUILD__='2026-11-18T21:00Z-v122';</script>
 <style>
 html{background:#5E7752}
 #ppBootScreen{position:fixed;inset:0;width:100vw;height:100vh;
@@ -10360,12 +10360,14 @@ init();
       if (typeof currentUserId !== 'undefined' && typeof dbGetAllJars === 'function'){
         const allJ2 = await dbGetAllJars();
         if (typeof jars !== 'undefined') {
-          window.jars = allJ2.filter(j => j.userId === currentUserId);
+          // v122: update the app's real in-memory lists (window.* made a disconnected copy,
+          // so the goal on screen stayed stale and later saves could overwrite the new credit)
+          jars = allJ2.filter(j => j.userId === currentUserId).sort((a,b) => (a.order||0) - (b.order||0));
         }
       }
       if (typeof dbGetAll === 'function' && typeof goals !== 'undefined'){
         const allG2 = await dbGetAll();
-        window.goals = allG2.filter(g => g.userId === currentUserId);
+        goals = allG2.filter(g => g.userId === currentUserId);
       }
       if (typeof renderJarsView === 'function') renderJarsView();
       if (typeof renderHome === 'function') renderHome();
