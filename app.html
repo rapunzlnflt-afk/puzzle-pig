@@ -224,7 +224,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 <meta name="twitter:description" content="Kids do chores, earn money, and split it between Save, Spend and Give jars, with a goal photo that reveals as they save. PIN-protected parent dashboard.">
 <meta name="twitter:image" content="https://cleartrackapps.com/assets/og-puzzle-pig.png">
 <link rel="canonical" href="https://cleartrackapps.com/puzzle-pig/">
-<script>window.__PP_BUILD__='2026-11-15T05:30Z-v112';</script>
+<script>window.__PP_BUILD__='2026-11-18T18:00Z-v113';</script>
 <style>
 html{background:#5C4287}
 #ppBootScreen{position:fixed;inset:0;width:100vw;height:100vh;
@@ -530,6 +530,23 @@ a { color: inherit; text-decoration: none; }
 /* ============ VIEWS ============ */
 .view { display: none; animation: fadeIn 0.35s var(--ease-smooth); }
 .view.active { display: block; }
+/* Scripture footer at the bottom of the parent dashboard. A pseudo-element so it
+   survives every renderParentSettings() rebuild of the view's contents. */
+#parentSettingsView::after {
+  content: "\201CIf any of you lacks wisdom, let him ask God, who gives generously to all without reproach, and it will be given him.\201D\A\2014  James 1:5 (ESV)";
+  white-space: pre-line;
+  display: block;
+  margin: 28px auto 8px;
+  padding: 14px 12px 4px;
+  max-width: 560px;
+  border-top: 1px solid #e5e7eb;
+  text-align: center;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  font-style: italic;
+  color: #6b7280;
+}
+
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ============ CARD ============ */
