@@ -224,7 +224,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 <meta name="twitter:description" content="Kids do chores, earn money, and split it between Save, Spend and Give jars, with a goal photo that reveals as they save. PIN-protected parent dashboard.">
 <meta name="twitter:image" content="https://cleartrackapps.com/assets/og-puzzle-pig.png">
 <link rel="canonical" href="https://cleartrackapps.com/puzzle-pig/">
-<script>window.__PP_BUILD__='2026-11-18T09:00Z-v117';</script>
+<script>window.__PP_BUILD__='2026-11-18T09:30Z-v118';</script>
 <style>
 html{background:#5C4287}
 #ppBootScreen{position:fixed;inset:0;width:100vw;height:100vh;
@@ -3244,6 +3244,9 @@ async function ppLedgerCatchUp(id){
   const getCloud = (window.ppSync && typeof window.ppSync.getCloudTotal === 'function')
     ? window.ppSync.getCloudTotal : null;
   if (!getCloud){ console.warn('[PuzzlePig] catch-up: ppSync.getCloudTotal missing'); return; }
+  // v117: on a kid phone, credit any approved chores first (Save jar + goal), so the
+  // catch-up below only restores money that truly has no chore record behind it.
+  try { if (localStorage.getItem('pp_role') === 'child' && typeof window.backfillApprovedLogCredits === 'function') await window.backfillApprovedLogCredits(); } catch(_){}
   // Poll the bridge for up to ~6s: getCloudTotal returns null until familyId+sb are ready.
   let cloudTotal = null;
   for (let i = 0; i < 12; i++){
@@ -3265,7 +3268,9 @@ async function ppLedgerCatchUp(id){
   const delta = Math.round((desiredRestore - priorRestore) * 100) / 100;
   console.log('[PuzzlePig] catch-up eval for', id, '| cloud', cloudTotal, '| jarSum', jarSum, '| priorRestore', priorRestore, '| delta', delta);
   if (delta <= 0.005) return; // device already at/above cloud; nothing to restore
-  const spendJar = myJars.find(j => j.type === 'spend') || myJars.find(j => j.type === 'save') || myJars[0];
+  // v117: restore missed earnings into SAVE (where approved chores land by default) so
+  // the goal can receive them; it used to go to Spend, which goals never see.
+  const spendJar = myJars.find(j => j.type === 'save') || myJars.find(j => j.type === 'spend') || myJars[0];
   if (!spendJar){ console.warn('[PuzzlePig] catch-up: no jar to restore into for', id); return; }
   spendJar.balance = Math.round(((spendJar.balance||0) + delta) * 100) / 100;
   await dbPutJar(spendJar);
@@ -3287,9 +3292,48 @@ async function ppLedgerCatchUp(id){
       try { if (typeof updateJarDisplays === 'function') updateJarDisplays(); } catch(_){}
     }
   } catch(_){}
-  console.log('[PuzzlePig] Ledger catch-up: added', delta, '→ Spend jar; device now matches cloud total', cloudTotal);
+  try { await ppFillGoalsFromSaveJar(id); } catch(_){}
+  try { if (typeof currentUserId !== 'undefined' && currentUserId === id){ if (typeof renderHome === 'function') renderHome(); if (typeof renderPuzzle === 'function' && currentGoalId) renderPuzzle(); } } catch(_){}
+  console.log('[PuzzlePig] Ledger catch-up: added', delta, '→', spendJar.type, 'jar; device now matches cloud total', cloudTotal);
 }
 try { window.ppLedgerCatchUp = ppLedgerCatchUp; } catch(_){}
+
+// v117: shared Save-jar → goal reconcile (add-only for goals, never lowers the Save jar).
+async function ppFillGoalsFromSaveJar(userId){
+  try {
+    const uid = userId || (typeof currentUserId !== 'undefined' ? currentUserId : null);
+    if (!uid) return;
+    const allJ = await dbGetAllJars();
+    const saveJar = allJ.filter(j => j.userId === uid).find(j => j.type === 'save');
+    if (!saveJar) return;
+    const allG = await dbGetAll();
+    const userGoals = allG.filter(g => g.userId === uid);
+    const savedOf = g => Array.isArray(g.history) ? g.history.reduce((s, h) => s + (Number(h.amount)||0), 0) : 0;
+    const open = userGoals.filter(g => !g.purchased);
+    const goalSum = Math.round(open.reduce((s, g) => s + savedOf(g), 0) * 100) / 100;
+    const bal = Math.round((Number(saveJar.balance) || 0) * 100) / 100;
+    if (bal - goalSum > 0.005) {
+      const room = Math.round(open.reduce((s, g) => s + Math.max(0, (Number(g.goalAmount)||0) - savedOf(g)), 0) * 100) / 100;
+      const credit = Math.min(Math.round((bal - goalSum) * 100) / 100, room);
+      if (credit > 0.005) {
+        await creditGoalsForUser(credit, new Date().toISOString(), 'Savings moved into goal', open);
+        console.log('[PuzzlePig v117] filled goals from Save jar +$' + credit.toFixed(2));
+      }
+    } else if (goalSum - bal > 0.005) {
+      saveJar.balance = goalSum;
+      await dbPutJar(saveJar);
+      console.log('[PuzzlePig] Save jar raised to goal total', bal, '->', goalSum);
+    }
+    // Refresh the in-memory arrays for the signed-in user
+    if (typeof currentUserId !== 'undefined' && currentUserId === uid) {
+      const allG2 = await dbGetAll();
+      goals = allG2.filter(g => g.userId === uid);
+      const allJ2 = await dbGetAllJars();
+      jars = allJ2.filter(j => j.userId === uid).sort((a,b) => a.order - b.order);
+    }
+  } catch(e){ console.warn('[PuzzlePig v117] ppFillGoalsFromSaveJar failed', e); }
+}
+try { window.ppFillGoalsFromSaveJar = ppFillGoalsFromSaveJar; } catch(_){}
 
 async function selectUser(id) {
   currentUserId = id;
@@ -3314,16 +3358,14 @@ async function selectUser(id) {
   choreLogs = allChoreLogs.filter(cl => cl.userId === id);
 
   // Sync Save jar balance with goal history
-  // v=38: SAVE jar = goal total. Always reconcile both directions at load (goal is source of truth).
-  const saveJar = jars.find(j => j.type === 'save');
-  if (saveJar) {
-    const totalGoalSaved = Math.round(goals.reduce((sum, g) => sum + (Array.isArray(g.history) ? g.history.reduce((s, h) => s + (Number(h.amount)||0), 0) : 0), 0) * 100) / 100;
-    if (Math.abs((saveJar.balance||0) - totalGoalSaved) > 0.005) {
-      console.log('[PuzzlePig] Save jar reconciled:', saveJar.balance, '->', totalGoalSaved);
-      saveJar.balance = totalGoalSaved;
-      await dbPutJar(saveJar);
-    }
-  }
+  // v117: Never ERASE Save-jar money at sign-in. The old v=38 rule forced Save = goal
+  // total in both directions, so money earned before a goal existed (or a credit that
+  // missed the goal) was wiped from Save on the next open and the ledger catch-up then
+  // re-added it to SPEND, where goals never see it. Now: if Save holds more than the
+  // goals, credit that money INTO the goals (capped at their room; any surplus stays in
+  // Save). If the goals hold more than Save, raise Save to match (unchanged behavior).
+  // Bought goals are excluded: their money already left the Save jar.
+  await ppFillGoalsFromSaveJar(id);
   // v=48: LEDGER CATCH-UP (self-correcting). The cloud total_saved is the authoritative
   // record of a child's lifetime earnings. Early chores (pre-sync-layer) and any earnings
   // lost to a device reset/reinstall live ONLY as the cloud total. If this device's jars
@@ -4160,7 +4202,7 @@ function renderHome() {
       const prev = lastSeenJarBalances[uid][j.id];
       const cur = j.balance || 0;
       if (prev !== undefined && cur > prev) {
-        setTimeout(() => celebrateJarDeposit(idx, cur - prev), 300);
+        ppQueueDepositCelebration(idx, j, cur - prev); // v117: full-screen celebration
       }
       lastSeenJarBalances[uid][j.id] = cur;
     });
@@ -4479,6 +4521,9 @@ async function saveGoal() {
 
   goals.push(goal);
   await dbPut(goal);
+  // v117: a new goal immediately picks up Save-jar money that no goal holds yet
+  // (e.g. earned before this goal was created).
+  try { await ppFillGoalsFromSaveJar(currentUserId); } catch(_){}
   currentGoalId = goal.id;
   showView('puzzleView');
 }
@@ -5040,6 +5085,7 @@ async function creditGoalsForUser(amount, date, note, userGoals) {
   // Defensive: ensure every goal has a history array (older goals were saved without one)
   for (const g of userGoals) { if (!Array.isArray(g.history)) g.history = []; }
   const activeGoals = userGoals.filter(g => {
+    if (g.purchased) return false; // v117: bought goals never take new money
     const saved = g.history.reduce((s, h) => s + (Number(h.amount)||0), 0);
     return saved < (Number(g.goalAmount)||0);
   });
@@ -5069,6 +5115,7 @@ async function creditGoalsWithOverflow(amount, date, note, preferredGoalId) {
 
   // Build ordered list: preferred goal first (if given), then other active goals
   const activeGoals = goals.filter(g => {
+    if (g.purchased) return false; // v117: bought goals never take new money
     const saved = g.history.reduce((s, h) => s + h.amount, 0);
     return saved < g.goalAmount;
   });
@@ -6618,6 +6665,204 @@ function celebrateJarDeposit(jarIdx, amount) {
     pill.querySelectorAll('.jar-coin-particle, .jar-celebrate-ring').forEach(p => p.remove());
   }, 2500);
 }
+
+// ============================================================
+// v117: Approved-chore celebration — full-screen coin drop into the pig,
+// confetti, the chore name + amount, then (for Save-jar money) the goal
+// picture filling in from its old % to its new %. Tap anywhere to close.
+// ============================================================
+let _ppDepQueue = null;
+function ppQueueDepositCelebration(jarIdx, jar, amount){
+  if (!(amount > 0.004)) return;
+  if (!_ppDepQueue){
+    _ppDepQueue = { items: [] };
+    setTimeout(() => { const q = _ppDepQueue; _ppDepQueue = null; ppShowDepositCelebration(q ? q.items : []); }, 350);
+  }
+  _ppDepQueue.items.push({ jarIdx, jar, amount });
+}
+
+function ppDepInjectCss(){
+  if (document.getElementById('ppDepCss')) return;
+  const st = document.createElement('style');
+  st.id = 'ppDepCss';
+  st.textContent = `
+  .pp-dep-overlay{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px 20px calc(24px + env(safe-area-inset-bottom));background:rgba(43,32,58,.72);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);opacity:0;transition:opacity .25s ease;overflow:hidden;cursor:pointer}
+  .pp-dep-overlay.on{opacity:1}
+  .pp-dep-stage{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;transition:transform .6s cubic-bezier(.2,.8,.2,1)}
+  .pp-dep-overlay.phase2 .pp-dep-stage{transform:scale(.72)}
+  .pp-dep-pigwrap{position:relative;width:150px;height:150px}
+  .pp-dep-pig{width:150px;height:150px;object-fit:contain;transform:scale(0);animation:ppDepPop .5s cubic-bezier(.3,1.6,.5,1) .05s forwards;filter:drop-shadow(0 8px 16px rgba(0,0,0,.25))}
+  .pp-dep-pig.bump{animation:ppDepBump .28s ease}
+  .pp-dep-coin{position:absolute;left:50%;top:0;width:34px;height:34px;margin-left:-17px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#FFF3B0 0 18%,#FACC15 19% 62%,#CA8A04 63%);box-shadow:inset 0 0 0 3px #EAB308,0 2px 6px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font:800 17px/1 var(--font-display,system-ui);color:#92400E;opacity:0;animation:ppDepDrop .85s cubic-bezier(.5,0,.9,.6) forwards}
+  .pp-dep-amount{margin-top:10px;font:800 3rem/1 var(--font-display,system-ui);color:#FDE68A;text-shadow:0 3px 0 #B45309,0 6px 16px rgba(0,0,0,.35);letter-spacing:.5px}
+  .pp-dep-title{margin-top:10px;font:700 1.35rem/1.25 var(--font-display,system-ui);color:#fff;max-width:300px}
+  .pp-dep-sub{margin-top:4px;font-size:.95rem;color:rgba(255,255,255,.85)}
+  .pp-dep-goal{width:min(320px,86vw);background:#fff;border-radius:22px;padding:14px 14px 16px;box-shadow:0 18px 40px rgba(0,0,0,.35);transform:translateY(40px) scale(.9);opacity:0;transition:transform .55s cubic-bezier(.2,1.3,.4,1),opacity .35s ease;display:none}
+  .pp-dep-overlay.phase2 .pp-dep-goal{transform:none;opacity:1}
+  .pp-dep-goal-img{position:relative;width:100%;aspect-ratio:1;border-radius:16px;overflow:hidden;background:var(--purple-100,#EDE7F6)}
+  .pp-dep-goal-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .pp-dep-goal-img .clear{transition:clip-path 1.6s cubic-bezier(.4,0,.2,1)}
+  .pp-dep-pct{position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.55);color:#fff;font:700 1.05rem/1 var(--font-display,system-ui);padding:6px 12px;border-radius:999px}
+  .pp-dep-goal-name{margin-top:12px;font:700 1.1rem/1.2 var(--font-display,system-ui);color:var(--text,#2B203A);text-align:center}
+  .pp-dep-bar{margin-top:10px;height:12px;border-radius:999px;background:var(--purple-100,#EDE7F6);overflow:hidden}
+  .pp-dep-bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#F472B6,#A78BFA);transition:width 1.6s cubic-bezier(.4,0,.2,1)}
+  .pp-dep-goal-text{margin-top:8px;font-size:.92rem;color:var(--text-muted,#6B6178);text-align:center}
+  .pp-dep-goal-text strong{color:var(--text,#2B203A)}
+  .pp-dep-btn{margin-top:4px;min-width:160px;padding:13px 28px;border:0;border-radius:999px;background:#FACC15;color:#78350F;font:800 1.1rem/1 var(--font-display,system-ui);box-shadow:0 4px 0 #CA8A04;opacity:0;transform:translateY(10px);transition:opacity .3s ease,transform .3s ease;cursor:pointer}
+  .pp-dep-btn.on{opacity:1;transform:none}
+  @keyframes ppDepPop{to{transform:scale(1)}}
+  @keyframes ppDepBump{0%{transform:scale(1)}40%{transform:scale(1.12,.9)}100%{transform:scale(1)}}
+  @keyframes ppDepDrop{0%{opacity:1;transform:translateY(-55vh) rotate(0)}85%{opacity:1;transform:translateY(38px) rotate(540deg) scale(.8)}100%{opacity:0;transform:translateY(46px) rotate(600deg) scale(.4)}}
+  @media (prefers-reduced-motion: reduce){.pp-dep-coin{display:none}.pp-dep-pig{animation:none;transform:none}.pp-dep-goal-img .clear,.pp-dep-bar span{transition:none}}
+  `;
+  document.head.appendChild(st);
+}
+
+function ppDepPigSrc(){
+  try {
+    const imgs = document.querySelectorAll('img[src^="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJAAAACQ"]');
+    if (imgs.length) return imgs[0].getAttribute('src');
+  } catch(_){}
+  return (typeof PIGGY_OVERLAY_SRC !== 'undefined') ? PIGGY_OVERLAY_SRC : '';
+}
+
+function ppDepChoreNames(){
+  const uid = (typeof currentUserId !== 'undefined') ? currentUserId : null;
+  if (!uid) return [];
+  const key = 'pp_cel_seen_' + uid;
+  let since = 0;
+  try { since = Number(localStorage.getItem(key) || 0); } catch(_){}
+  if (!since) since = Date.now() - 24 * 3600 * 1000;
+  const logs = (typeof choreLogs !== 'undefined' && Array.isArray(choreLogs)) ? choreLogs : [];
+  const fresh = logs.filter(l => l && l.userId === uid && l.status === 'approved' && l.approvedAt && Date.parse(l.approvedAt) > since);
+  try { localStorage.setItem(key, String(Date.now())); } catch(_){}
+  const list = (typeof chores !== 'undefined' && Array.isArray(chores)) ? chores : [];
+  return fresh.map(l => { const c = list.find(x => x.id === l.choreId); return (c && c.name) || l._choreName || ''; }).filter(Boolean);
+}
+
+function ppShowDepositCelebration(items){
+  if (!items || !items.length) return;
+  // Never stack on top of the big "goal complete" celebration — fall back to the jar bounce.
+  const goalCel = document.getElementById('celebrationOverlay');
+  if ((goalCel && goalCel.classList.contains('active')) || document.getElementById('ppDepOverlay')){
+    items.forEach(it => { try { celebrateJarDeposit(it.jarIdx, it.amount); } catch(_){} });
+    return;
+  }
+  ppDepInjectCss();
+  const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const total = Math.round(items.reduce((s, it) => s + it.amount, 0) * 100) / 100;
+  const saveAmt = Math.round(items.filter(it => it.jar && it.jar.type === 'save').reduce((s, it) => s + it.amount, 0) * 100) / 100;
+  const jarNames = [...new Set(items.map(it => (it.jar && it.jar.name) || 'jar'))];
+  const names = ppDepChoreNames();
+  // Only approved chores get the big celebration; transfers, parent deposits and
+  // restored earnings keep the small jar bounce.
+  if (!names.length){
+    items.forEach(it => { try { celebrateJarDeposit(it.jarIdx, it.amount); } catch(_){} });
+    return;
+  }
+  let title = 'Money added!';
+  if (names.length === 1) title = names[0] + ' approved!';
+  else if (names.length > 1) title = names.length + ' chores approved!';
+  const sub = 'Added to your ' + (jarNames.length === 1 ? jarNames[0] : jarNames.slice(0, -1).join(', ') + ' and ' + jarNames[jarNames.length - 1]) + (jarNames.length === 1 ? ' jar' : ' jars');
+
+  // Goal to show: the open goal that most recently received money.
+  let goal = null, oldPct = 0, newPct = 0, saved = 0;
+  if (saveAmt > 0 && typeof goals !== 'undefined' && Array.isArray(goals)){
+    const open = goals.filter(g => g && !g.purchased && !g.archived && (Number(g.goalAmount) || 0) > 0);
+    const lastDate = g => (Array.isArray(g.history) && g.history.length) ? Math.max(...g.history.map(h => Date.parse(h.date) || 0)) : -1;
+    open.sort((a, b) => lastDate(b) - lastDate(a));
+    goal = open[0] || null;
+    if (goal){
+      saved = (goal.history || []).reduce((s, h) => s + (Number(h.amount) || 0), 0);
+      const old = Math.max(0, saved - saveAmt);
+      newPct = Math.min(100, saved / goal.goalAmount * 100);
+      oldPct = Math.min(100, old / goal.goalAmount * 100);
+    }
+  }
+
+  const ov = document.createElement('div');
+  ov.className = 'pp-dep-overlay';
+  ov.id = 'ppDepOverlay';
+  ov.setAttribute('role', 'dialog');
+  ov.setAttribute('aria-label', title);
+  ov.setAttribute('data-testid', 'chore-celebration');
+  const pigSrc = ppDepPigSrc();
+  const coinCount = reduce ? 0 : Math.min(10, Math.max(5, Math.round(total * 2)));
+  let coinsHtml = '';
+  for (let i = 0; i < coinCount; i++) coinsHtml += `<span class="pp-dep-coin" style="animation-delay:${(0.35 + i * 0.16).toFixed(2)}s;margin-left:${Math.round(-17 + Math.random() * 50 - 25)}px">$</span>`;
+  let goalHtml = '';
+  if (goal){
+    const left = Math.max(0, goal.goalAmount - saved);
+    const msg = newPct >= 100 ? '<strong>You reached your goal!</strong>' : `<strong>$${fmtNum(saved)}</strong> of $${fmtNum(goal.goalAmount)} &middot; only <strong>$${fmtNum(left)}</strong> to go`;
+    const img = goal.imageData
+      ? `<img src="${(typeof PIGGY_OVERLAY_SRC !== 'undefined') ? PIGGY_OVERLAY_SRC : ''}" alt=""><img class="clear" src="${goal.imageData}" alt="${esc(goal.name)}" style="clip-path:inset(${(100 - oldPct).toFixed(1)}% 0 0 0)">`
+      : '';
+    goalHtml = `<div class="pp-dep-goal">
+        ${img ? `<div class="pp-dep-goal-img">${img}<div class="pp-dep-pct">${Math.round(oldPct)}%</div></div>` : ''}
+        <div class="pp-dep-goal-name">${esc(goal.name)}</div>
+        <div class="pp-dep-bar"><span style="width:${oldPct.toFixed(1)}%"></span></div>
+        <div class="pp-dep-goal-text">${msg}</div>
+      </div>`;
+  }
+  ov.innerHTML = `
+    <div class="pp-dep-stage">
+      <div class="pp-dep-pigwrap">${coinsHtml}<img class="pp-dep-pig" src="${pigSrc}" alt="Puzzle Pig"></div>
+      <div class="pp-dep-amount">+$0.00</div>
+      <div class="pp-dep-title">${esc(title)}</div>
+      <div class="pp-dep-sub">${esc(sub)}</div>
+    </div>
+    ${goalHtml}
+    <button class="pp-dep-btn" type="button" data-testid="btn-celebration-yay">Yay!</button>`;
+  document.body.appendChild(ov);
+  requestAnimationFrame(() => ov.classList.add('on'));
+
+  const timers = [];
+  const T = (fn, ms) => timers.push(setTimeout(fn, ms));
+  const pig = ov.querySelector('.pp-dep-pig');
+  for (let i = 0; i < coinCount; i++) T(() => { if (!pig) return; pig.classList.remove('bump'); void pig.offsetWidth; pig.classList.add('bump'); }, 350 + i * 160 + 600);
+  if (!reduce) T(() => { try { launchConfetti(); } catch(_){} }, 450);
+  // Count the amount up
+  const amtEl = ov.querySelector('.pp-dep-amount');
+  const t0 = performance.now(), dur = reduce ? 1 : 1100;
+  (function tick(now){
+    const k = Math.min(1, (now - t0) / dur);
+    amtEl.textContent = '+$' + fmtNum(total * (1 - Math.pow(1 - k, 3)));
+    if (k < 1 && document.body.contains(ov)) requestAnimationFrame(tick); else amtEl.textContent = '+$' + fmtNum(total);
+  })(t0);
+  const btn = ov.querySelector('.pp-dep-btn');
+  if (!goal) ov.querySelector('.pp-dep-stage').style.transform = 'none';
+  T(() => btn.classList.add('on'), goal ? 2600 : 1300);
+  if (goal){
+    T(() => {
+      const card = ov.querySelector('.pp-dep-goal');
+      if (card) { card.style.display = 'block'; void card.offsetWidth; }
+      ov.classList.add('phase2');
+      T(() => {
+        const clear = ov.querySelector('.pp-dep-goal-img .clear');
+        if (clear) clear.style.clipPath = `inset(${(100 - newPct).toFixed(1)}% 0 0 0)`;
+        const bar = ov.querySelector('.pp-dep-bar span');
+        if (bar) bar.style.width = newPct.toFixed(1) + '%';
+        const pctEl = ov.querySelector('.pp-dep-pct');
+        if (pctEl){
+          const p0 = performance.now();
+          (function pt(now){ const k = Math.min(1, (now - p0) / 1600); pctEl.textContent = Math.round(oldPct + (newPct - oldPct) * k) + '%'; if (k < 1 && document.body.contains(ov)) requestAnimationFrame(pt); })(p0);
+        }
+      }, 450);
+    }, reduce ? 300 : 1900);
+  }
+  let closed = false;
+  const close = () => {
+    if (closed) return; closed = true;
+    timers.forEach(clearTimeout);
+    try { stopConfetti(); } catch(_){}
+    ov.classList.remove('on');
+    setTimeout(() => { ov.remove(); }, 260);
+  };
+  ov.addEventListener('click', close);
+  T(close, goal ? 11000 : 7000);
+}
+try { window.ppShowDepositCelebration = ppShowDepositCelebration; } catch(_){}
+
 
 function showEncouragement(amount, customMsg) {
   const toast = document.getElementById('encouragementToast');
@@ -9532,6 +9777,10 @@ init();
         }
       }
       safeRerender();
+      // v117: an approval that arrived by polling (realtime dropped, e.g. iPhone in the
+      // background) never hit the realtime 'transition' hook, so it was never credited
+      // until the next sign-in. Credit it now (idempotent per log id).
+      try { if (role === 'child' && typeof backfillApprovedLogCredits === 'function') await backfillApprovedLogCredits(); } catch(_){}
       // v61: after every pull, heal any approved chore that never credited the child's goal
       try { if (typeof reconcileGoalsFromApprovedLogs === 'function') await reconcileGoalsFromApprovedLogs(); } catch(_){}
     } catch(e){
@@ -10010,11 +10259,12 @@ init();
       const allGoalsNow = await dbGetAll();
       const userGoals = allGoalsNow.filter(g => g.userId === currentUserId);
       if (!userGoals.length) return;
-      const goalSum = Math.round(userGoals.reduce((s, g) => s + (Array.isArray(g.history) ? g.history.reduce((a,h)=>a+(Number(h.amount)||0),0) : 0), 0) * 100) / 100;
+      // v117: bought goals' money already left the Save jar — don't count it here
+      const goalSum = Math.round(userGoals.filter(g => !g.purchased).reduce((s, g) => s + (Array.isArray(g.history) ? g.history.reduce((a,h)=>a+(Number(h.amount)||0),0) : 0), 0) * 100) / 100;
       const gap = Math.round((jarBal - goalSum) * 100) / 100;
       if (gap <= 0.005) return; // goal already >= jar; nothing to add (never lower)
       // Only credit into goals that still have room; cap the credit at total remaining room
-      const room = userGoals.reduce((s, g) => {
+      const room = userGoals.filter(g => !g.purchased).reduce((s, g) => {
         const saved = Array.isArray(g.history) ? g.history.reduce((a,h)=>a+(Number(h.amount)||0),0) : 0;
         return s + Math.max(0, (Number(g.goalAmount)||0) - saved);
       }, 0);
