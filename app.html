@@ -224,7 +224,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 <meta name="twitter:description" content="Kids do chores, earn money, and split it between Save, Spend and Give jars, with a goal photo that reveals as they save. PIN-protected parent dashboard.">
 <meta name="twitter:image" content="https://cleartrackapps.com/assets/og-puzzle-pig.png">
 <link rel="canonical" href="https://cleartrackapps.com/puzzle-pig/">
-<script>window.__PP_BUILD__='2026-11-18T16:00Z-v120';</script>
+<script>window.__PP_BUILD__='2026-11-18T19:00Z-v121';</script>
 <style>
 html{background:#5E7752}
 #ppBootScreen{position:fixed;inset:0;width:100vw;height:100vh;
@@ -5406,10 +5406,12 @@ async function saveEditEntry(idx) {
   }
 
   const newNote = document.getElementById('editEntryNote').value.trim();
+  const oldAmount = Number(goal.history[idx].amount) || 0;
   goal.history[idx].amount = newAmount;
   goal.history[idx].date = new Date(newDate + 'T12:00:00').toISOString();
   goal.history[idx].note = newNote || undefined;
   await dbPut(goal);
+  if (!goal.purchased) await ppAdjustSaveJarBy(newAmount - oldAmount, 'Edited: ' + goal.name);
   await syncSaveJarBalance();
   editingEntryIndex = null;
   renderSavingsEntry();
@@ -5419,8 +5421,9 @@ async function deleteJournalEntry(idx) {
   const goal = goals.find(g => g.id === currentGoalId);
   if (!goal || !goal.history[idx]) return;
 
-  goal.history.splice(idx, 1);
+  const removed = goal.history.splice(idx, 1)[0];
   await dbPut(goal);
+  if (!goal.purchased) await ppAdjustSaveJarBy(-(Number(removed && removed.amount) || 0), 'Removed: ' + goal.name);
   await syncSaveJarBalance();
   editingEntryIndex = null;
   renderSavingsEntry();
@@ -5428,13 +5431,41 @@ async function deleteJournalEntry(idx) {
 
 // ---- Sync Save Jar Balance ----
 async function syncSaveJarBalance() {
+  // v121: keep the Save jar and the goal(s) matched WITHOUT ever losing money.
+  // Rule: Save jar = money saved toward open goals, plus any extra only once every goal is full.
+  //  - Save holds more than the goals and a goal still has room -> move the extra into the goal.
+  //  - Goals show more than Save holds -> take the difference back out of the goals.
+  // The Save jar balance itself is never overwritten here (bought goals are excluded).
   const saveJar = jars.find(j => j.type === 'save');
   if (!saveJar) return;
-  // Exclude purchased goals: their saved money has already left the Save jar
-  // (spent on the item, with any leftover moved to a jar the child chose).
-  const totalSaved = goals.reduce((total, g) => g.purchased ? total : total + g.history.reduce((s, h) => s + h.amount, 0), 0);
-  saveJar.balance = totalSaved;
+  const cents = v => Math.round((Number(v) || 0) * 100) / 100;
+  const savedOf = g => Array.isArray(g.history) ? g.history.reduce((s, h) => s + (Number(h.amount) || 0), 0) : 0;
+  const open = goals.filter(g => !g.purchased && (!currentUserId || !g.userId || g.userId === currentUserId));
+  const bal = cents(saveJar.balance);
+  const goalSum = cents(open.reduce((s, g) => s + savedOf(g), 0));
+  if (bal - goalSum > 0.005) {
+    const room = cents(open.reduce((s, g) => s + Math.max(0, (Number(g.goalAmount) || 0) - savedOf(g)), 0));
+    const credit = Math.min(cents(bal - goalSum), room);
+    if (credit > 0.005) await creditGoalsForUser(credit, new Date().toISOString(), 'Savings moved into goal', open);
+  } else if (goalSum - bal > 0.005) {
+    await debitGoalsFromSaveJar(cents(goalSum - bal), new Date().toISOString().split('T')[0], 'Matched to Save jar');
+  }
+}
+// v121: when a goal entry is edited/removed/undone, move the Save jar by the same amount.
+async function ppAdjustSaveJarBy(delta, note) {
+  const d = Math.round((Number(delta) || 0) * 100) / 100;
+  if (Math.abs(d) < 0.005) return;
+  const saveJar = jars.find(j => j.type === 'save');
+  if (!saveJar) return;
+  const before = Math.round((Number(saveJar.balance) || 0) * 100) / 100;
+  const after = Math.max(0, Math.round((before + d) * 100) / 100);
+  saveJar.balance = after;
   await dbPutJar(saveJar);
+  const nowIso = new Date().toISOString();
+  const tx = { id: 'jartx_' + Date.now() + '_adj', jarId: saveJar.id, userId: currentUserId, amount: Math.round((after - before) * 100) / 100,
+    type: 'adjust', note: note || 'Goal entry changed', date: nowIso.split('T')[0], createdAt: nowIso };
+  await dbPutJarTx(tx);
+  try { if (Array.isArray(jarTxs)) jarTxs.push(tx); } catch(_){}
 }
 
 
@@ -6674,7 +6705,20 @@ async function parentJarDoAction(jarId, userId, action) {
   } else {
     jar.balance = Math.max(0, (jar.balance || 0) - amt);
     const txEntry = { id: 'jartx_' + Date.now(), jarId, userId, amount: -amt, type: 'withdraw', note: 'Withdrawn by parent', createdAt: now };
-    await dbPutJarTx(txEntry);
+    await dbPutJarTx(txEntry);    if (jar.type === 'save') {
+      // v121: keep that child's goal matched to the lower Save jar
+      try {
+        const allGoalsNow = await dbGetAll();
+        const open = allGoalsNow.filter(g => g.userId === userId && !g.purchased);
+        const savedOf = g => Array.isArray(g.history) ? g.history.reduce((s, h) => s + (Number(h.amount)||0), 0) : 0;
+        let over = Math.round((open.reduce((s, g) => s + savedOf(g), 0) - jar.balance) * 100) / 100;
+        for (const g of open.slice().reverse()) {
+          if (over <= 0.005) break;
+          const take = Math.min(over, Math.max(0, savedOf(g)));
+          if (take > 0.005) { g.history.push({ amount: -take, date: now, note: 'Withdrawn by parent' }); await dbPut(g); over = Math.round((over - take) * 100) / 100; }
+        }
+      } catch(e){ console.warn('[PuzzlePig v121] parent withdraw goal sync failed', e); }
+    }
   }
   await dbPutJar(jar);
   document.getElementById('parentJarActionForm')?.remove();
@@ -7238,9 +7282,12 @@ async function undoLastSave() {
   closeGoalMenu();
   const goal = goals.find(g => g.id === currentGoalId);
   if (!goal || goal.history.length === 0) return;
-  goal.history.pop();
+  const undone = goal.history.pop();
   await dbPut(goal);
+  if (!goal.purchased) await ppAdjustSaveJarBy(-(Number(undone && undone.amount) || 0), 'Undo: ' + goal.name);
+  await syncSaveJarBalance();
   renderPuzzle();
+  try { if (typeof renderHome === 'function') renderHome(); } catch(_){}
 }
 
 function confirmDeleteGoal() {
@@ -7593,7 +7640,7 @@ async function jarDoTransfer(sourceJarId){
   // v59 FIX D: keep the Save-jar goal(s) in sync when money moves in/out of Save
   try {
     if (tgt.type === 'save') { await creditGoalsWithOverflow(amt, now.split('T')[0], 'From ' + src.name); await syncSaveJarBalance(); }
-    if (src.type === 'save') { await debitGoalsFromSaveJar(amt, now.split('T')[0], 'To ' + tgt.name); await syncSaveJarBalance(); }
+    if (src.type === 'save') { await syncSaveJarBalance(); }
   } catch(e){ console.warn('[PuzzlePig v59] jarDoTransfer goal sync failed', e); }
   renderJarDetail();
   if (typeof renderHome === 'function') renderHome();
@@ -7657,6 +7704,8 @@ async function saveJarAdd(jarId) {
   // v=38: For the SAVE jar, the goal is the source of truth.
   // Credit goals first, then sync jar balance from goal totals (no double counting).
   if (jar.type === 'save') {
+    jar.balance = Math.round(((jar.balance || 0) + amt) * 100) / 100;
+    await dbPutJar(jar);
     try { await creditGoalsWithOverflow(amt, today, note); } catch(e) { console.warn('[PuzzlePig] creditGoalsWithOverflow err', e); }
     await syncSaveJarBalance();
   } else {
@@ -7706,7 +7755,9 @@ async function saveJarWithdraw(jarId) {
   const withdrawNote = document.getElementById('jarWithdrawNoteInput').value.trim() || 'Withdrawal';
   // v=38: For the SAVE jar, debit goals then sync jar from goals (single source of truth)
   if (jar.type === 'save') {
-    try { await debitGoalsFromSaveJar(amt, today, withdrawNote); } catch(e) { console.warn('[PuzzlePig] debitGoalsFromSaveJar err', e); }
+    // v121: take the money out of the jar; goals give back only what the jar can no longer cover
+    jar.balance = Math.round(Math.max(0, (jar.balance || 0) - amt) * 100) / 100;
+    await dbPutJar(jar);
     await syncSaveJarBalance();
   } else {
     jar.balance = Math.round(((jar.balance || 0) - amt) * 100) / 100;
@@ -7733,7 +7784,7 @@ async function debitGoalsFromSaveJar(amount, date, note) {
   // Walk all goals, collect history entries with positive amount, sorted newest first
   const entries = [];
   for (const g of goals) {
-    if (!Array.isArray(g.history)) continue;
+    if (!Array.isArray(g.history) || g.purchased) continue;
     g.history.forEach((h, idx) => {
       if ((Number(h.amount)||0) > 0) entries.push({ goal: g, idx, amount: Number(h.amount), date: h.date || '' });
     });
@@ -8007,7 +8058,7 @@ async function confirmTransfer() {
   // v59 FIX D: keep the Save-jar goal(s) in sync when money moves in/out of Save
   try {
     if (toJar.type === 'save') { await creditGoalsWithOverflow(amount, now.split('T')[0], `From ${fromJar.name}`); await syncSaveJarBalance(); }
-    if (fromJar.type === 'save') { await debitGoalsFromSaveJar(amount, now.split('T')[0], `To ${toJar.name}`); await syncSaveJarBalance(); }
+    if (fromJar.type === 'save') { await syncSaveJarBalance(); }
   } catch(e){ console.warn('[PuzzlePig v59] confirmTransfer goal sync failed', e); }
   closeTransferModal();
   if (document.getElementById('parentSettingsView').classList.contains('active')) {
