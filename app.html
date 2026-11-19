@@ -35,6 +35,9 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
   var C = {"name": "Puzzle Pig", "storage": "ppLicense", "store": 478073, "product": 1525656, "limit": 5, "buy": "https://cleartrackapps.com/go/puzzle-pig/", "price": "$19.99", "demo": "https://cleartrackapps.com/puzzle-pig-demo/", "email": "cleartrackapps@gmail.com", "db": "PuzzlePigDB", "stores": ["goals", "users", "chores"]};
   var API = 'https://api.lemonsqueezy.com/v1/licenses/';
   var RECHECK_MS = 12 * 3600 * 1000;
+  // Lemon Squeezy shuts down on 2027-03-31. From 2027-03-01 the app stops asking it,
+  // so an unlocked device stays unlocked even if its API goes away.
+  var LS_SUNSET = Date.parse('2027-03-01T00:00:00Z');
   var root = document.documentElement;
 
   function read(){ try { return JSON.parse(localStorage.getItem(C.storage) || '{}') || {}; } catch(e){ return {}; } }
@@ -166,10 +169,11 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
     if (document.readyState !== 'loading') build(); else document.addEventListener('DOMContentLoaded', build);
   }
 
-  // Re-ask the store about a saved key now and then. Only a clear "no" locks;
+  // Re-ask the store about a saved key now and then. Only a clear refund/expiry locks;
   // offline or an odd reply changes nothing.
   function recheck(s){
     if (!s.key || !s.instanceId) return;
+    if (Date.now() >= LS_SUNSET) return;
     if (s.lastCheck && Date.now() - Date.parse(s.lastCheck) < RECHECK_MS) return;
     if (navigator.onLine === false) return;
     setTimeout(function(){
@@ -178,7 +182,9 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
         var cur = read();
         if (d.valid && ours(d.meta)){ cur.lastCheck = now(); write(cur); return; }
         var st = d.license_key && d.license_key.status;
-        if (st === 'disabled' || st === 'expired' || /not found/i.test(d.error || '')){
+        // Only a key the store still knows and reports as refunded or expired locks.
+        // "Not found" or an empty reply (store gone or keys removed) changes nothing.
+        if (d.license_key && (st === 'disabled' || st === 'expired') && ours(d.meta)){
           write({ status:'locked', seen: cur.since || now(), note: 'This key is no longer active. Email ' + C.email + ' if you think this is a mistake.' });
         }
       }).catch(function(){});
@@ -224,7 +230,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 <meta name="twitter:description" content="Kids do chores, earn money, and split it between Save, Spend and Give jars, with a goal photo that reveals as they save. PIN-protected parent dashboard.">
 <meta name="twitter:image" content="https://cleartrackapps.com/assets/og-puzzle-pig.png">
 <link rel="canonical" href="https://cleartrackapps.com/puzzle-pig/">
-<script>window.__PP_BUILD__='2026-11-19T16:00Z-v129';</script>
+<script>window.__PP_BUILD__='2026-11-19T20:00Z-v130';</script>
 <style>
 html{background:#5D7747}
 #ppBootScreen{position:fixed;inset:0;width:100vw;height:100vh;
