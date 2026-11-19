@@ -200,7 +200,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 })();
 </script>
 <!-- ===== end license unlock screen ===== -->
-<meta name="theme-color" content="#A9C29A">
+<meta name="theme-color" content="#84A964">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -224,7 +224,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 <meta name="twitter:description" content="Kids do chores, earn money, and split it between Save, Spend and Give jars, with a goal photo that reveals as they save. PIN-protected parent dashboard.">
 <meta name="twitter:image" content="https://cleartrackapps.com/assets/og-puzzle-pig.png">
 <link rel="canonical" href="https://cleartrackapps.com/puzzle-pig/">
-<script>window.__PP_BUILD__='2026-11-18T23:00Z-v123';</script>
+<script>window.__PP_BUILD__='2026-11-19T01:00Z-v124';</script>
 <style>
 html{background:#5E7752}
 #ppBootScreen{position:fixed;inset:0;width:100vw;height:100vh;
@@ -257,7 +257,7 @@ cursor:pointer;font-family:inherit}
   --font-display: 'Nunito', 'Pally', 'Trebuchet MS', sans-serif;
   --font-body: 'Nunito', 'DM Sans', 'Helvetica Neue', sans-serif;
   --font-story: 'Fraunces', Georgia, 'Times New Roman', serif;
-  --sage-band: #A9C29A;
+  --sage-band: #84A964;
   --sage-ink: #4F6844;
   --rose-300: #F2C4C7;
   --rose-400: #E9A3A8;
@@ -288,22 +288,22 @@ body { font-weight: 500; }
 .current-user-bar .current-user-avatar { box-shadow: 0 0 0 2px #fff; }
 .current-user-bar button, .current-user-bar a { color: #fff; }
 #mainHeader {
-  position: relative; background: var(--sage-band);
-  margin: 0 calc(-1 * var(--space-4)) 26px; padding: var(--space-2) var(--space-4) var(--space-5);
+  position: relative; background: radial-gradient(ellipse 70% 62% at 50% 45%, #91B671 0%, var(--sage-band) 72%);
+  margin: 0 calc(-1 * var(--space-4)) 34px; padding: var(--space-2) var(--space-4) var(--space-5);
 }
 #currentUserBar[style*="none"] ~ #mainHeader { margin-top: calc(-1 * var(--space-4)); padding-top: var(--space-6); }
 #mainHeader::after {
-  /* v123: softer, shallower scallops */
-  content: ""; position: absolute; left: 0; right: 0; bottom: -6px; height: 7px; pointer-events: none;
-  background: radial-gradient(ellipse 11px 6px at 11px 0, var(--sage-band) 97%, transparent 100%) 0 0 / 22px 7px repeat-x;
+  /* v124: soft rolling-hill edge (replaces the scallops) */
+  content: ""; position: absolute; left: 0; right: 0; bottom: -17px; height: 18px; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 18' preserveAspectRatio='none'%3E%3Cpath d='M0 0H400V6C335 20 270 20 200 10C130 0 65 0 0 13Z' fill='%2384A964'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
 }
 #mainHeader .app-logo img { filter: drop-shadow(0 6px 10px rgba(60, 85, 50, 0.22)); }
 .app-logo-text, #userSelectScreen .app-logo-text {
   background: none !important; -webkit-background-clip: initial !important; background-clip: initial !important;
   font-family: var(--font-story); font-weight: 700; font-size: 2rem; letter-spacing: -0.3px; line-height: 1.1;
 }
-#mainHeader .app-logo-text { color: #fff; -webkit-text-fill-color: #fff; text-shadow: 0 2px 0 rgba(70, 95, 60, 0.28); }
-#mainHeader .app-tagline { color: #F4F8EF; font-weight: 700; }
+#mainHeader .app-logo-text { color: #fff; -webkit-text-fill-color: #fff; text-shadow: 0 2px 0 rgba(55, 80, 40, 0.32); }
+#mainHeader .app-tagline { color: #FFFFFF; font-weight: 700; text-shadow: 0 1px 2px rgba(45, 70, 30, 0.35); }
 #userSelectScreen .app-logo-text { color: var(--rose-600); -webkit-text-fill-color: var(--rose-600); }
 
 /* ---------- Storybook titles ---------- */
