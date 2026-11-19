@@ -34,6 +34,8 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 (function(){
   var C = {"name": "Puzzle Pig", "storage": "ppLicense", "store": 478073, "product": 1525656, "limit": 5, "buy": "https://cleartrackapps.com/go/puzzle-pig/", "price": "$19.99", "demo": "https://cleartrackapps.com/puzzle-pig-demo/", "email": "cleartrackapps@gmail.com", "db": "PuzzlePigDB", "stores": ["goals", "users", "chores"]};
   var API = 'https://api.lemonsqueezy.com/v1/licenses/';
+  // CleartrackApps' own key server (same requests and replies as Lemon Squeezy).
+  var CT_API = 'https://mpanuzarzcfgjbheepmj.supabase.co/functions/v1/licenses/';
   var RECHECK_MS = 12 * 3600 * 1000;
   // Lemon Squeezy shuts down on 2027-03-31. From 2027-03-01 the app stops asking it,
   // so an unlocked device stays unlocked even if its API goes away.
@@ -56,9 +58,25 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
     } catch(e){ return ''; }
   }
 
-  function post(action, fields){
+  // A new key is looked up on CleartrackApps' server first; a key it doesn't know is
+  // tried on Lemon Squeezy until LS_SUNSET. `src` ('ct' or 'ls') is where a saved key
+  // lives, and every reply is tagged with it as d._src.
+  function post(action, fields, src){
+    var lsOpen = Date.now() < LS_SUNSET;
+    if (src === 'ct') return postTo(CT_API, action, fields).then(tag('ct'));
+    if (src === 'ls') return postTo(API, action, fields).then(tag('ls'));
+    return postTo(CT_API, action, fields).then(function(d){
+      if (d && d.license_key === null && lsOpen) return postTo(API, action, fields).then(tag('ls'));
+      return tag('ct')(d);
+    }, function(e){
+      if (lsOpen) return postTo(API, action, fields).then(tag('ls'));
+      throw e;
+    });
+  }
+  function tag(src){ return function(d){ if (d && typeof d === 'object') d._src = src; return d; }; }
+  function postTo(base, action, fields){
     var body = Object.keys(fields).map(function(k){ return encodeURIComponent(k) + '=' + encodeURIComponent(fields[k]); }).join('&');
-    return fetch(API + action, { method:'POST', headers:{ 'Accept':'application/json', 'Content-Type':'application/x-www-form-urlencoded' }, body: body })
+    return fetch(base + action, { method:'POST', headers:{ 'Accept':'application/json', 'Content-Type':'application/x-www-form-urlencoded' }, body: body })
       .then(function(r){ return r.json().catch(function(){ return {}; }); });
   }
   function ours(m){ return !!m && Number(m.store_id) === C.store && Number(m.product_id) === C.product; }
@@ -102,6 +120,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 
   function friendly(err){
     var e = String(err || '');
+    if (/rate_limited/i.test(e)) return 'Too many tries in a row. Wait 10 minutes, then try again.';
     if (/activation limit/i.test(e)) return 'This key is already in use on ' + C.limit + ' devices. Free one up from My Orders, then try again.';
     if (/not found|invalid/i.test(e)) return "That key wasn't recognized. Copy it again from your receipt email.";
     if (/disabled|expired|inactive/i.test(e)) return 'This key has been turned off. Email ' + C.email + ' and we will help.';
@@ -115,11 +134,11 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
     post('activate', { license_key: key, instance_name: deviceName() }).then(function(d){
       if (!d || !d.activated){ ui(friendly(d && d.error)); return; }
       if (!ours(d.meta)){
-        post('deactivate', { license_key: key, instance_id: (d.instance && d.instance.id) || '' }).catch(function(){});
+        post('deactivate', { license_key: key, instance_id: (d.instance && d.instance.id) || '' }, d._src).catch(function(){});
         ui('That key is for a different product, not ' + C.name + '.');
         return;
       }
-      write({ status:'active', key: key, instanceId: (d.instance && d.instance.id) || null, since: now(), lastCheck: now() });
+      write({ status:'active', key: key, instanceId: (d.instance && d.instance.id) || null, src: d._src || 'ls', since: now(), lastCheck: now() });
       ui('Unlocked. Enjoy ' + C.name + '.', 'ok');
       setTimeout(unlock, 700);
     }).catch(function(){ ui("Couldn't reach the license server. Check your connection and try again."); });
@@ -173,11 +192,12 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
   // offline or an odd reply changes nothing.
   function recheck(s){
     if (!s.key || !s.instanceId) return;
-    if (Date.now() >= LS_SUNSET) return;
+    var src = s.src || 'ls'; // keys saved before the key server existed are Lemon Squeezy keys
+    if (src === 'ls' && Date.now() >= LS_SUNSET) return;
     if (s.lastCheck && Date.now() - Date.parse(s.lastCheck) < RECHECK_MS) return;
     if (navigator.onLine === false) return;
     setTimeout(function(){
-      post('validate', { license_key: s.key, instance_id: s.instanceId }).then(function(d){
+      post('validate', { license_key: s.key, instance_id: s.instanceId }, src).then(function(d){
         if (!d || (d.valid === undefined && !d.license_key)) return;
         var cur = read();
         if (d.valid && ours(d.meta)){ cur.lastCheck = now(); write(cur); return; }
@@ -230,7 +250,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 <meta name="twitter:description" content="Kids do chores, earn money, and split it between Save, Spend and Give jars, with a goal photo that reveals as they save. PIN-protected parent dashboard.">
 <meta name="twitter:image" content="https://cleartrackapps.com/assets/og-puzzle-pig.png">
 <link rel="canonical" href="https://cleartrackapps.com/puzzle-pig/">
-<script>window.__PP_BUILD__='2026-11-19T20:00Z-v130';</script>
+<script>window.__PP_BUILD__='2026-11-19T21:00Z-v131';</script>
 <style>
 html{background:#5D7747}
 #ppBootScreen{position:fixed;inset:0;width:100vw;height:100vh;
