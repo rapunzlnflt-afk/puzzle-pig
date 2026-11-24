@@ -121,7 +121,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
   function friendly(err){
     var e = String(err || '');
     if (/rate_limited/i.test(e)) return 'Too many tries in a row. Wait 10 minutes, then try again.';
-    if (/activation limit/i.test(e)) return 'This key is already in use on ' + C.limit + ' devices. Free one up from My Orders, then try again.';
+    if (/activation limit/i.test(e)) return 'This key is already in use on ' + C.limit + ' devices. Email cleartrackapps@gmail.com and we will free one up.';
     if (/not found|invalid/i.test(e)) return "That key wasn't recognized. Copy it again from your receipt email.";
     if (/disabled|expired|inactive/i.test(e)) return 'This key has been turned off. Email ' + C.email + ' and we will help.';
     return e || "That key wasn't recognized.";
@@ -250,7 +250,7 @@ html.lic-wait body{visibility:hidden!important;overflow:hidden!important}
 <meta name="twitter:description" content="Kids do chores, earn money, and split it between Save, Spend and Give jars, with a goal photo that reveals as they save. PIN-protected parent dashboard.">
 <meta name="twitter:image" content="https://cleartrackapps.com/assets/og-puzzle-pig.png">
 <link rel="canonical" href="https://cleartrackapps.com/puzzle-pig/">
-<script>window.__PP_BUILD__='2026-11-19T22:00Z-v132';</script>
+<script>window.__PP_BUILD__='2026-11-24T06:30Z-v133';</script>
 <style>
 html{background:#5D7747}
 #ppBootScreen{position:fixed;inset:0;width:100vw;height:100vh;
